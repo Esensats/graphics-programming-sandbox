@@ -25,6 +25,7 @@ set(SPDLOG_BUILD_BENCH OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/glfw EXCLUDE_FROM_ALL)
 add_subdirectory(third_party/glad/cmake glad_cmake)
 add_subdirectory(third_party/spdlog EXCLUDE_FROM_ALL)
+add_subdirectory(third_party/glm EXCLUDE_FROM_ALL)
 
 glad_add_library(glad STATIC REPRODUCIBLE API gl:core=4.6)
 
@@ -49,8 +50,12 @@ target_link_libraries(imgui
 )
 
 add_executable(${PROJECT_NAME}
+    src/sandbox/assets/image_loader.cpp
     src/sandbox/logging.cpp
     src/main.cpp
+    src/sandbox/graphics/mesh_utils.cpp
+    src/sandbox/graphics/primitives.cpp
+    src/sandbox/graphics/shader_utils.cpp
     src/sandbox/state_manager.cpp
     src/sandbox/states/selector_menu_state.cpp
     src/sandbox/states/fragment_playground_state.cpp
@@ -60,12 +65,19 @@ add_executable(${PROJECT_NAME}
 target_include_directories(${PROJECT_NAME}
     PRIVATE
         include
+    third_party/stb
+)
+
+target_compile_definitions(${PROJECT_NAME}
+    PRIVATE
+        SANDBOX_SHADER_DIR="${CMAKE_SOURCE_DIR}/shaders"
 )
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
         glad
         glfw
+    glm::glm
         imgui
         spdlog::spdlog
         OpenGL::GL

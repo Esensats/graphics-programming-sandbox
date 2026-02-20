@@ -1,5 +1,6 @@
 #pragma once
 
+#include "sandbox/graphics/mesh_utils.hpp"
 #include "sandbox/state.hpp"
 
 namespace sandbox::states {
@@ -12,9 +13,7 @@ class HelloCubeState final : public State {
 
   private:
     unsigned int program_ = 0;
-    unsigned int vao_ = 0;
-    unsigned int vbo_ = 0;
-    unsigned int ebo_ = 0;
+    graphics::IndexedMeshHandles mesh_{};
     float elapsed_seconds_ = 0.0f;
 };
 
