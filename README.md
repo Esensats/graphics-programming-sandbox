@@ -27,3 +27,7 @@ cmake --build build -j
 ```bash
 ./build/opengl_sandbox
 ```
+
+## Documentation
+
+- [Voxel Engine / Game Master Plan](docs/voxel-engine-planning.md)
