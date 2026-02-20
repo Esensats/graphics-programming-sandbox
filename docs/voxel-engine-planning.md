@@ -439,10 +439,12 @@ Use this section as lightweight status tracking:
 - **Current milestone:** `M0`
 - **Completed items:**
   - Planning doc created
+  - Voxel gameplay state scaffold added and wired in selector/factory
+  - Voxel runtime shell added with clean state lifecycle ownership
 - **In progress:**
-  - _TBD_
+  - M1 dense world core (`32^3` chunk representation and world access APIs)
 - **Next:**
-  - Add voxel gameplay state scaffold
+  - Integrate chunk streaming/generation queues (M2)
 - **Known risks:**
   - No generic job system exists yet; will need careful design in early milestones
 

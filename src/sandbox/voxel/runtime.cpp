@@ -9,9 +9,13 @@ void Runtime::initialize() {
         return;
     }
 
+    world_.clear();
+    world_.ensure_chunk(world::ChunkKey{0, 0, 0});
+    (void)world_.set_block(world::WorldVoxelCoord{0, 0, 0}, 1);
+
     simulation_time_seconds_ = 0.0;
     initialized_ = true;
-    LOG_INFO("Voxel runtime initialized");
+    LOG_INFO("Voxel runtime initialized (active chunks: {})", world_.active_chunk_count());
 }
 
 void Runtime::shutdown() {
@@ -19,6 +23,7 @@ void Runtime::shutdown() {
         return;
     }
 
+    world_.clear();
     initialized_ = false;
     simulation_time_seconds_ = 0.0;
     LOG_INFO("Voxel runtime shutdown");
