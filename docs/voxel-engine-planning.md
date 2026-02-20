@@ -443,9 +443,9 @@ Use this section as lightweight status tracking:
   - Voxel runtime shell added with clean state lifecycle ownership
   - M1 dense world core (`32^3` chunk representation and world access APIs)
 - **In progress:**
-  - M2 residency policy and generation queue scaffolding
+  - M2 residency policy with worker-thread generation and main-thread chunk commit
 - **Next:**
-  - Introduce worker-thread job execution for generation/meshing stages
+  - Introduce meshing pipeline queues and generalized job-system interfaces
 - **Known risks:**
   - No generic job system exists yet; will need careful design in early milestones
 

@@ -2,8 +2,11 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <condition_variable>
 #include <deque>
+#include <mutex>
 #include <optional>
+#include <thread>
 #include <unordered_set>
 #include <vector>
 
@@ -17,6 +20,7 @@ struct StreamingConfig {
     int vertical_radius_chunks = 2;
     std::size_t generation_budget_per_frame = 8;
     std::size_t unload_budget_per_frame = 8;
+  std::size_t generation_workers = 1;
     std::uint32_t seed = 1;
 };
 
@@ -36,10 +40,18 @@ class ResidencyController {
     void rebuild_desired_set();
     void enqueue_generation_jobs(const world::World& world);
     void enqueue_unload_jobs(const world::World& world);
-    void process_generation_jobs(world::World& world);
+    void process_generated_chunks(world::World& world);
     void process_unload_jobs(world::World& world);
+    void start_workers();
+    void stop_workers();
+    void worker_main();
 
     [[nodiscard]] bool is_within_focus_range(const world::ChunkKey& key) const;
+
+    struct GeneratedChunk {
+      world::ChunkKey key{};
+      world::Chunk chunk{};
+    };
 
     StreamingConfig config_{};
     TerrainGenerator generator_{};
@@ -52,7 +64,12 @@ class ResidencyController {
     std::unordered_set<world::ChunkKey, world::ChunkKeyHash> desired_set_{};
 
     std::deque<world::ChunkKey> generation_queue_{};
-    std::unordered_set<world::ChunkKey, world::ChunkKeyHash> generation_queued_set_{};
+    std::unordered_set<world::ChunkKey, world::ChunkKeyHash> generation_pending_set_{};
+    std::deque<GeneratedChunk> generated_chunk_queue_{};
+    mutable std::mutex generation_mutex_{};
+    std::condition_variable generation_cv_{};
+    bool workers_stopping_ = false;
+    std::vector<std::thread> workers_{};
 
     std::deque<world::ChunkKey> unload_queue_{};
     std::unordered_set<world::ChunkKey, world::ChunkKeyHash> unload_queued_set_{};
