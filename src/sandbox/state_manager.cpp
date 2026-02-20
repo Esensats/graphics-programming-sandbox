@@ -7,6 +7,7 @@
 #include "sandbox/states/fragment_playground_state.hpp"
 #include "sandbox/states/hello_cube_state.hpp"
 #include "sandbox/states/selector_menu_state.hpp"
+#include "sandbox/states/voxel_game_state.hpp"
 
 namespace sandbox {
 
@@ -78,6 +79,8 @@ std::unique_ptr<State> StateManager::make_state(AppStateId state_id) {
             return std::make_unique<states::FragmentPlaygroundState>();
         case AppStateId::hello_cube:
             return std::make_unique<states::HelloCubeState>();
+        case AppStateId::voxel_game:
+            return std::make_unique<states::VoxelGameState>();
     }
 
     return nullptr;

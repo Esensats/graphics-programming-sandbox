@@ -8,6 +8,7 @@ enum class AppStateId {
     selector_menu,
     fragment_playground,
     hello_cube,
+    voxel_game,
 };
 
 struct StateTransition {

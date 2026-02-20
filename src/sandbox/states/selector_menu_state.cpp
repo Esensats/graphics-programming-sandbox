@@ -66,6 +66,9 @@ StateTransition SelectorMenuState::update(AppContext& context, float delta_secon
         if (ImGui::Button("Hello Cube", ImVec2(-1.0f, 0.0f))) {
             transition = StateTransition::to(AppStateId::hello_cube);
         }
+        if (ImGui::Button("Voxel Game (Scaffold)", ImVec2(-1.0f, 0.0f))) {
+            transition = StateTransition::to(AppStateId::voxel_game);
+        }
 
         ImGui::Spacing();
         ImGui::Separator();
