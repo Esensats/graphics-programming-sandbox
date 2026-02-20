@@ -1,7 +1,9 @@
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
 
+#include "sandbox/app_context.hpp"
 #include "sandbox/logging.hpp"
+#include "sandbox/state_manager.hpp"
 
 namespace {
 void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
@@ -61,13 +63,43 @@ int main() {
     glfwGetFramebufferSize(window, &width, &height);
     glViewport(0, 0, width, height);
 
+    sandbox::AppContext app_context{};
+    app_context.window = window;
+    app_context.framebuffer_width = width;
+    app_context.framebuffer_height = height;
+    app_context.time_seconds = glfwGetTime();
+
+    sandbox::StateManager state_manager{};
+    state_manager.initialize(app_context, sandbox::AppStateId::selector_menu);
+
+    double previous_time = app_context.time_seconds;
+    bool shift_escape_was_down = false;
+
     while (glfwWindowShouldClose(window) == GLFW_FALSE) {
-        glClearColor(0.08f, 0.08f, 0.12f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glfwPollEvents();
+
+        glfwGetFramebufferSize(window, &app_context.framebuffer_width, &app_context.framebuffer_height);
+
+        app_context.time_seconds = glfwGetTime();
+        const float delta_seconds = static_cast<float>(app_context.time_seconds - previous_time);
+        previous_time = app_context.time_seconds;
+
+        const bool shift_down = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+                                glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+        const bool escape_down = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
+        const bool shift_escape_down = shift_down && escape_down;
+
+        app_context.return_to_selector_requested = shift_escape_down && !shift_escape_was_down;
+        shift_escape_was_down = shift_escape_down;
+
+        if (!state_manager.update(app_context, delta_seconds)) {
+            glfwSetWindowShouldClose(window, GLFW_TRUE);
+        }
 
         glfwSwapBuffers(window);
-        glfwPollEvents();
     }
+
+    state_manager.shutdown(app_context);
 
     glfwDestroyWindow(window);
     glfwTerminate();

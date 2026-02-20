@@ -28,9 +28,33 @@ add_subdirectory(third_party/spdlog EXCLUDE_FROM_ALL)
 
 glad_add_library(glad STATIC REPRODUCIBLE API gl:core=4.6)
 
+add_library(imgui STATIC
+    third_party/imgui/imgui.cpp
+    third_party/imgui/imgui_draw.cpp
+    third_party/imgui/imgui_tables.cpp
+    third_party/imgui/imgui_widgets.cpp
+    third_party/imgui/backends/imgui_impl_glfw.cpp
+    third_party/imgui/backends/imgui_impl_opengl3.cpp
+)
+
+target_include_directories(imgui
+    PUBLIC
+        third_party/imgui
+        third_party/imgui/backends
+)
+
+target_link_libraries(imgui
+    PRIVATE
+        glfw
+)
+
 add_executable(${PROJECT_NAME}
     src/sandbox/logging.cpp
     src/main.cpp
+    src/sandbox/state_manager.cpp
+    src/sandbox/states/selector_menu_state.cpp
+    src/sandbox/states/fragment_playground_state.cpp
+    src/sandbox/states/hello_cube_state.cpp
 )
 
 target_include_directories(${PROJECT_NAME}
@@ -42,6 +66,7 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE
         glad
         glfw
+        imgui
         spdlog::spdlog
         OpenGL::GL
 )
