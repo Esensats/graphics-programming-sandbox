@@ -10,6 +10,18 @@ std::size_t World::active_chunk_count() const {
     return chunks_.size();
 }
 
+std::vector<ChunkKey> World::chunk_keys() const {
+    std::vector<ChunkKey> keys;
+    keys.reserve(chunks_.size());
+
+    for (const auto& [key, chunk] : chunks_) {
+        (void)chunk;
+        keys.push_back(key);
+    }
+
+    return keys;
+}
+
 void World::clear() {
     chunks_.clear();
 }

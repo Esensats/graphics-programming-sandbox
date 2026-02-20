@@ -3,6 +3,7 @@
 #include <array>
 #include <optional>
 #include <unordered_map>
+#include <vector>
 
 #include "sandbox/voxel/world/chunk.hpp"
 
@@ -18,6 +19,7 @@ class World {
   public:
     [[nodiscard]] bool has_chunk(const ChunkKey& key) const;
     [[nodiscard]] std::size_t active_chunk_count() const;
+    [[nodiscard]] std::vector<ChunkKey> chunk_keys() const;
 
     void clear();
     Chunk& ensure_chunk(const ChunkKey& key);

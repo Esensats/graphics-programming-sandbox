@@ -10,12 +10,21 @@ void Runtime::initialize() {
     }
 
     world_.clear();
-    world_.ensure_chunk(world::ChunkKey{0, 0, 0});
-    (void)world_.set_block(world::WorldVoxelCoord{0, 0, 0}, 1);
+    residency_.initialize(streaming::StreamingConfig{
+        .horizontal_radius_chunks = 2,
+        .vertical_radius_chunks = 1,
+        .generation_budget_per_frame = 12,
+        .unload_budget_per_frame = 12,
+        .seed = 1337,
+    });
+    residency_.set_focus_world(world::WorldVoxelCoord{0, 0, 0});
+    residency_.update(world_);
 
     simulation_time_seconds_ = 0.0;
     initialized_ = true;
-    LOG_INFO("Voxel runtime initialized (active chunks: {})", world_.active_chunk_count());
+    LOG_INFO("Voxel runtime initialized (active chunks: {}, generation queued: {})",
+        world_.active_chunk_count(),
+        residency_.queued_generation_count());
 }
 
 void Runtime::shutdown() {
@@ -23,6 +32,7 @@ void Runtime::shutdown() {
         return;
     }
 
+    residency_.shutdown();
     world_.clear();
     initialized_ = false;
     simulation_time_seconds_ = 0.0;
@@ -43,6 +53,8 @@ void Runtime::update_frame(float delta_seconds) {
     }
 
     (void)delta_seconds;
+    residency_.set_focus_world(world::WorldVoxelCoord{0, 0, 0});
+    residency_.update(world_);
 }
 
 } // namespace sandbox::voxel
