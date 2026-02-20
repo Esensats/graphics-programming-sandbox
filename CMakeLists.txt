@@ -17,23 +17,39 @@ find_package(OpenGL REQUIRED)
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_EXAMPLE_HO OFF CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_BENCH OFF CACHE BOOL "" FORCE)
 
 add_subdirectory(third_party/glfw EXCLUDE_FROM_ALL)
 add_subdirectory(third_party/glad/cmake glad_cmake)
+add_subdirectory(third_party/spdlog EXCLUDE_FROM_ALL)
 
 glad_add_library(glad STATIC REPRODUCIBLE API gl:core=4.6)
 
 add_executable(${PROJECT_NAME}
+    src/sandbox/logging.cpp
     src/main.cpp
+)
+
+target_include_directories(${PROJECT_NAME}
+    PRIVATE
+        include
 )
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
         glad
         glfw
+        spdlog::spdlog
         OpenGL::GL
 )
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_libraries(${PROJECT_NAME} PRIVATE stdc++exp)
 endif()

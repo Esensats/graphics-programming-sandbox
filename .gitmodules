@@ -6,3 +6,7 @@
 	path = third_party/glad
 	url = https://github.com/Dav1dde/glad.git
 	shallow = true
+[submodule "third_party/spdlog"]
+	path = third_party/spdlog
+	url = https://github.com/gabime/spdlog.git
+	shallow = true

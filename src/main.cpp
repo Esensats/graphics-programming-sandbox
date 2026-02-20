@@ -1,7 +1,7 @@
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
 
-#include <iostream>
+#include "sandbox/logging.hpp"
 
 namespace {
 void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
@@ -11,8 +11,17 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
 }
 
 int main() {
+    sandbox::logging::Config logging_config{};
+#if defined(NDEBUG)
+    logging_config.level = spdlog::level::info;
+#else
+    logging_config.level = spdlog::level::debug;
+#endif
+    sandbox::logging::init(logging_config);
+
     if (glfwInit() == GLFW_FALSE) {
-        std::cerr << "Failed to initialize GLFW\n";
+        LOG_CRITICAL("Failed to initialize GLFW");
+        sandbox::logging::shutdown();
         return 1;
     }
 
@@ -24,10 +33,11 @@ int main() {
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "OpenGL Sandbox", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(1280, 720, "[floating] OpenGL Sandbox", nullptr, nullptr);
     if (window == nullptr) {
-        std::cerr << "Failed to create GLFW window\n";
+        LOG_CRITICAL("Failed to create GLFW window");
         glfwTerminate();
+        sandbox::logging::shutdown();
         return 1;
     }
 
@@ -36,11 +46,15 @@ int main() {
     glfwSwapInterval(1);
 
     if (gladLoadGL(reinterpret_cast<GLADloadfunc>(glfwGetProcAddress)) == 0) {
-        std::cerr << "Failed to load OpenGL functions\n";
+        LOG_CRITICAL("Failed to load OpenGL functions");
         glfwDestroyWindow(window);
         glfwTerminate();
+        sandbox::logging::shutdown();
         return 1;
     }
+
+    const auto* version_string = reinterpret_cast<const char*>(glGetString(GL_VERSION));
+    LOG_INFO("Initialized OpenGL context: {}", version_string != nullptr ? version_string : "unknown");
 
     int width = 0;
     int height = 0;
@@ -57,5 +71,6 @@ int main() {
 
     glfwDestroyWindow(window);
     glfwTerminate();
+    sandbox::logging::shutdown();
     return 0;
 }
