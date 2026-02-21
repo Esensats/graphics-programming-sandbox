@@ -40,22 +40,28 @@ int TerrainGenerator::sample_height(int world_x, int world_z) const {
 }
 
 void TerrainGenerator::populate_chunk(const world::ChunkKey& key, world::Chunk& chunk) const {
-    for (int local_z = 0; local_z < world::kChunkExtent; ++local_z) {
-        for (int local_y = 0; local_y < world::kChunkExtent; ++local_y) {
-            for (int local_x = 0; local_x < world::kChunkExtent; ++local_x) {
-                const world::LocalVoxelCoord local_coord{local_x, local_y, local_z};
-                const world::WorldVoxelCoord world_coord = world::chunk_and_local_to_world(key, local_coord);
-                const int terrain_height = sample_height(world_coord.x, world_coord.z);
+  for (int local_z = 0; local_z < world::kChunkExtent; ++local_z) {
+    for (int local_y = 0; local_y < world::kChunkExtent; ++local_y) {
+      for (int local_x = 0; local_x < world::kChunkExtent; ++local_x) {
+        const world::LocalVoxelCoord local_coord{local_x, local_y, local_z};
+        const world::WorldVoxelCoord world_coord = world::chunk_and_local_to_world(key, local_coord);
+        const int terrain_height = sample_height(world_coord.x, world_coord.z);
 
-                const world::BlockId block_id = world_coord.y <= terrain_height
-                    ? static_cast<world::BlockId>(1)
-                    : world::kAirBlockId;
-                (void)chunk.set(local_coord, block_id);
-            }
+        world::BlockId block_id = world::kAirBlockId;
+        if (world_coord.y <= terrain_height) {
+          // Top 3 blocks (terrain_height, terrain_height-1, terrain_height-2) are glass (id 2)
+          if (world_coord.y >= terrain_height - 2) {
+            block_id = static_cast<world::BlockId>(2); // glass
+          } else {
+            block_id = static_cast<world::BlockId>(1); // stone
+          }
         }
+        (void)chunk.set(local_coord, block_id);
+      }
     }
+  }
 
-    chunk.mark_dirty_mesh();
+  chunk.mark_dirty_mesh();
 }
 
 } // namespace sandbox::voxel::streaming

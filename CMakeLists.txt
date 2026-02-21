@@ -78,6 +78,7 @@ target_include_directories(${PROJECT_NAME}
 target_compile_definitions(${PROJECT_NAME}
     PRIVATE
         SANDBOX_SHADER_DIR="${CMAKE_SOURCE_DIR}/shaders"
+    SANDBOX_RESOURCE_PACK_DIR="${CMAKE_SOURCE_DIR}/resource_packs"
 )
 
 target_link_libraries(${PROJECT_NAME}

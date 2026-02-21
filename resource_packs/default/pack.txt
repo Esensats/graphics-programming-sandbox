@@ -1,0 +1,10 @@
+# Default resource-pack manifest
+# Keys map texture array layers used by the current block set.
+# If a file is missing or invalid, a procedural placeholder is used.
+
+air=air.png
+stone=stone.png
+slab=slab.png
+grass=grass.png
+water=water.png
+glass=glass.png

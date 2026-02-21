@@ -9,6 +9,7 @@ struct MaterialPack {
 };
 
 MaterialPack create_placeholder_material_pack();
+MaterialPack create_material_pack_from_directory(const char* directory_path);
 void destroy_material_pack(MaterialPack& pack);
 
 } // namespace sandbox::voxel::render
