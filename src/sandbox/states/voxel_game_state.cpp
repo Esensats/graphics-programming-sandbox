@@ -41,10 +41,15 @@ void draw_commands(unsigned int program,
 void VoxelGameState::on_enter(AppContext& context) {
     (void)context;
     runtime_.initialize();
+    material_pack_ = voxel::render::create_placeholder_material_pack();
 
     program_ = graphics::create_program_from_files("voxel_chunk.vert", "voxel_chunk.frag");
     if (program_ == 0) {
         LOG_ERROR("Failed to create voxel program");
+    } else {
+        glUseProgram(program_);
+        const int albedo_loc = glGetUniformLocation(program_, "u_albedo_array");
+        glUniform1i(albedo_loc, 0);
     }
 
     accumulator_seconds_ = 0.0f;
@@ -59,6 +64,7 @@ void VoxelGameState::on_exit(AppContext& context) {
         glDeleteProgram(program_);
         program_ = 0;
     }
+    voxel::render::destroy_material_pack(material_pack_);
 
     runtime_.shutdown();
     accumulator_seconds_ = 0.0f;
@@ -113,6 +119,8 @@ StateTransition VoxelGameState::update(AppContext& context, float delta_seconds)
     });
 
     glUseProgram(program_);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, material_pack_.albedo_array);
     const int camera_loc = glGetUniformLocation(program_, "u_camera_world");
     glUniform3f(camera_loc, eye.x, eye.y, eye.z);
 
@@ -136,6 +144,7 @@ StateTransition VoxelGameState::update(AppContext& context, float delta_seconds)
 
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 
     return StateTransition::none();
 }

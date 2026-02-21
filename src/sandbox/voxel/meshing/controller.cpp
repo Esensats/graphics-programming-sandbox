@@ -11,9 +11,10 @@ namespace sandbox::voxel::meshing {
 
 namespace {
 
-constexpr std::array<graphics::VertexAttribute, 2> k_position_color_attributes{{
+constexpr std::array<graphics::VertexAttribute, 3> k_position_uv_layer_attributes{{
     {0, 3, 6, 0},
-    {1, 3, 6, 3},
+    {1, 2, 6, 3},
+    {2, 1, 6, 5},
 }};
 
 [[nodiscard]] bool should_emit_face(
@@ -62,32 +63,26 @@ struct ChunkBounds {
     };
 }
 
-[[nodiscard]] std::array<float, 3> layer_color(world::RenderLayer layer) {
-    switch (layer) {
-        case world::RenderLayer::opaque:
-            return {0.50f, 0.80f, 0.35f};
-        case world::RenderLayer::cutout:
-            return {0.20f, 0.95f, 0.25f};
-        case world::RenderLayer::translucent:
-            return {0.30f, 0.55f, 0.95f};
-    }
-
-    return {1.0f, 1.0f, 1.0f};
-}
-
 void append_face(ChunkMeshInfo::SurfaceMesh& surface,
                  const std::array<std::array<float, 3>, 4>& positions,
-                 world::RenderLayer layer) {
-    const std::array<float, 3> color = layer_color(layer);
+                 float material_layer) {
     const unsigned int base_index = static_cast<unsigned int>(surface.vertices.size() / 6);
 
-    for (const auto& pos : positions) {
+    constexpr std::array<std::array<float, 2>, 4> uv{{
+        {0.0f, 0.0f},
+        {0.0f, 1.0f},
+        {1.0f, 1.0f},
+        {1.0f, 0.0f},
+    }};
+
+    for (std::size_t index = 0; index < positions.size(); ++index) {
+        const auto& pos = positions[index];
         surface.vertices.push_back(pos[0]);
         surface.vertices.push_back(pos[1]);
         surface.vertices.push_back(pos[2]);
-        surface.vertices.push_back(color[0]);
-        surface.vertices.push_back(color[1]);
-        surface.vertices.push_back(color[2]);
+        surface.vertices.push_back(uv[index][0]);
+        surface.vertices.push_back(uv[index][1]);
+        surface.vertices.push_back(material_layer);
     }
 
     surface.indices.push_back(base_index + 0);
@@ -99,7 +94,7 @@ void append_face(ChunkMeshInfo::SurfaceMesh& surface,
 }
 
 void append_voxel_face(ChunkMeshInfo::SurfaceMesh& surface,
-                       world::RenderLayer layer,
+                       float material_layer,
                        float x,
                        float y,
                        float z,
@@ -109,37 +104,37 @@ void append_voxel_face(ChunkMeshInfo::SurfaceMesh& surface,
             append_face(surface, {{{x + 1.0f, y + 0.0f, z + 0.0f},
                                   {x + 1.0f, y + 1.0f, z + 0.0f},
                                   {x + 1.0f, y + 1.0f, z + 1.0f},
-                                  {x + 1.0f, y + 0.0f, z + 1.0f}}}, layer);
+                                  {x + 1.0f, y + 0.0f, z + 1.0f}}}, material_layer);
             break;
         case 1:
             append_face(surface, {{{x + 0.0f, y + 0.0f, z + 1.0f},
                                   {x + 0.0f, y + 1.0f, z + 1.0f},
                                   {x + 0.0f, y + 1.0f, z + 0.0f},
-                                  {x + 0.0f, y + 0.0f, z + 0.0f}}}, layer);
+                                  {x + 0.0f, y + 0.0f, z + 0.0f}}}, material_layer);
             break;
         case 2:
             append_face(surface, {{{x + 0.0f, y + 1.0f, z + 0.0f},
                                   {x + 0.0f, y + 1.0f, z + 1.0f},
                                   {x + 1.0f, y + 1.0f, z + 1.0f},
-                                  {x + 1.0f, y + 1.0f, z + 0.0f}}}, layer);
+                                  {x + 1.0f, y + 1.0f, z + 0.0f}}}, material_layer);
             break;
         case 3:
             append_face(surface, {{{x + 0.0f, y + 0.0f, z + 1.0f},
                                   {x + 0.0f, y + 0.0f, z + 0.0f},
                                   {x + 1.0f, y + 0.0f, z + 0.0f},
-                                  {x + 1.0f, y + 0.0f, z + 1.0f}}}, layer);
+                                  {x + 1.0f, y + 0.0f, z + 1.0f}}}, material_layer);
             break;
         case 4:
             append_face(surface, {{{x + 1.0f, y + 0.0f, z + 1.0f},
                                   {x + 1.0f, y + 1.0f, z + 1.0f},
                                   {x + 0.0f, y + 1.0f, z + 1.0f},
-                                  {x + 0.0f, y + 0.0f, z + 1.0f}}}, layer);
+                                  {x + 0.0f, y + 0.0f, z + 1.0f}}}, material_layer);
             break;
         case 5:
             append_face(surface, {{{x + 0.0f, y + 0.0f, z + 0.0f},
                                   {x + 0.0f, y + 1.0f, z + 0.0f},
                                   {x + 1.0f, y + 1.0f, z + 0.0f},
-                                  {x + 1.0f, y + 0.0f, z + 0.0f}}}, layer);
+                                  {x + 1.0f, y + 0.0f, z + 0.0f}}}, material_layer);
             break;
         default:
             break;
@@ -602,7 +597,12 @@ ChunkMeshInfo Controller::build_chunk_mesh(const BuildRequest& request) {
                     const float world_z = static_cast<float>(request.key.z * world::kChunkExtent + z);
 
                     ChunkMeshInfo::SurfaceMesh& surface = mesh_for_layer(mesh_info, traits.render_layer);
-                    append_voxel_face(surface, traits.render_layer, world_x, world_y, world_z, face);
+                    append_voxel_face(surface,
+                                      world::block_material_layer(block_id),
+                                      world_x,
+                                      world_y,
+                                      world_z,
+                                      face);
                 }
             }
         }
@@ -657,7 +657,7 @@ bool Controller::upload_surface_to_gpu(const ChunkMeshInfo::SurfaceMesh& surface
         return false;
     }
 
-    return graphics::create_indexed_mesh(surface.vertices, surface.indices, k_position_color_attributes, handles);
+    return graphics::create_indexed_mesh(surface.vertices, surface.indices, k_position_uv_layer_attributes, handles);
 }
 
 void Controller::prune_unloaded_chunks_locked(const world::World& world) {

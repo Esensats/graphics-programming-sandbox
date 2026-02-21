@@ -450,6 +450,7 @@ Use this section as lightweight status tracking:
   - First on-screen real chunk mesh rendering path from uploaded pass meshes
   - Fast-exit worker teardown hardening (drop pending generation/meshing queues on shutdown)
   - Dedicated voxel surface shader + translucent depth-write policy baseline
+  - Texture2DArray placeholder material pipeline (block -> layer index -> shader sampling)
 - **Next:**
   - Replace placeholder color-only shading with material/texture-aware voxel surface shading
 - **Known risks:**

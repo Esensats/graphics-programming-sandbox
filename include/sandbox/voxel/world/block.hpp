@@ -42,6 +42,25 @@ struct BlockDefinition {
     bool solid = false;
 };
 
+[[nodiscard]] constexpr float block_material_layer(BlockId block_id) {
+    switch (block_id) {
+        case kAirBlockId:
+            return 0.0f;
+        case kStoneBlockId:
+            return 1.0f;
+        case kSlabBlockId:
+            return 2.0f;
+        case kGrassBlockId:
+            return 3.0f;
+        case kWaterBlockId:
+            return 4.0f;
+        case kGlassBlockId:
+            return 5.0f;
+        default:
+            return 1.0f;
+    }
+}
+
 [[nodiscard]] constexpr bool is_full_cube(BlockShape shape) {
     return shape == BlockShape::full_cube;
 }
