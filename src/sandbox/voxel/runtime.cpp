@@ -26,13 +26,26 @@ void Runtime::initialize() {
     residency_.set_focus_world(world::WorldVoxelCoord{0, 0, 0});
     residency_.update(world_);
     meshing_.update(world_);
+    const meshing::RenderPassStats pass_stats = meshing_.render_pass_stats();
+    const meshing::RenderPassBuckets visible_buckets = meshing_.visible_render_pass_buckets(meshing::VisibilityQuery{
+        .origin_world = world::WorldVoxelCoord{0, 0, 0},
+        .enable_distance_cull = true,
+        .max_chunk_distance = 2,
+        .enable_frustum_cull = false,
+    });
 
     simulation_time_seconds_ = 0.0;
     initialized_ = true;
-    LOG_INFO("Voxel runtime initialized (active chunks: {}, generation queued: {}, upload queued: {})",
+    LOG_INFO("Voxel runtime initialized (active chunks: {}, generation queued: {}, upload queued: {}, opaque chunks: {}, cutout chunks: {}, translucent chunks: {}, visible opaque: {}, visible cutout: {}, visible translucent: {})",
         world_.active_chunk_count(),
         residency_.queued_generation_count(),
-        meshing_.queued_upload_count());
+        meshing_.queued_upload_count(),
+        pass_stats.opaque_chunk_count,
+        pass_stats.cutout_chunk_count,
+        pass_stats.translucent_chunk_count,
+        visible_buckets.opaque_chunks.size(),
+        visible_buckets.cutout_chunks.size(),
+        visible_buckets.translucent_chunks.size());
 }
 
 void Runtime::shutdown() {
@@ -65,6 +78,10 @@ void Runtime::update_frame(float delta_seconds) {
     residency_.set_focus_world(world::WorldVoxelCoord{0, 0, 0});
     residency_.update(world_);
     meshing_.update(world_);
+}
+
+meshing::RenderPassBuckets Runtime::visible_render_pass_buckets(const meshing::VisibilityQuery& query) const {
+    return meshing_.visible_render_pass_buckets(query);
 }
 
 } // namespace sandbox::voxel

@@ -444,6 +444,10 @@ Use this section as lightweight status tracking:
   - M1 dense world core (`32^3` chunk representation and world access APIs)
 - **In progress:**
   - M3 meshing pipeline scaffold (dirty chunks -> worker mesh build -> main-thread upload queue)
+  - Meshing metadata path for future non-full and translucent blocks (water/slabs/grass/glass)
+  - Render-pass bucket preparation for opaque/cutout/translucent chunk draw ordering
+  - Frustum-ready chunk visibility query over pass buckets (distance cull + plane hook)
+  - First on-screen voxel chunk proxy rendering path from visible pass buckets
 - **Next:**
   - Add chunk frustum culling path and GPU upload-backed mesh handles
 - **Known risks:**

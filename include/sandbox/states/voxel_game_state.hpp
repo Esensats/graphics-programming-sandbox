@@ -1,5 +1,6 @@
 #pragma once
 
+#include "sandbox/graphics/mesh_utils.hpp"
 #include "sandbox/state.hpp"
 #include "sandbox/voxel/runtime.hpp"
 
@@ -13,7 +14,10 @@ class VoxelGameState final : public State {
 
   private:
     voxel::Runtime runtime_{};
+    unsigned int program_ = 0;
+    graphics::IndexedMeshHandles chunk_proxy_mesh_{};
     float accumulator_seconds_ = 0.0f;
+    float elapsed_seconds_ = 0.0f;
     static constexpr float fixed_step_seconds_ = 1.0f / 60.0f;
 };
 

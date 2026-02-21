@@ -14,6 +14,8 @@ class Runtime {
     void update_fixed(float step_seconds);
     void update_frame(float delta_seconds);
 
+    [[nodiscard]] meshing::RenderPassBuckets visible_render_pass_buckets(const meshing::VisibilityQuery& query) const;
+
     [[nodiscard]] bool initialized() const {
         return initialized_;
     }
