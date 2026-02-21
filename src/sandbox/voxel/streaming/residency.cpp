@@ -212,6 +212,8 @@ void ResidencyController::stop_workers() {
     {
         std::scoped_lock lock(generation_mutex_);
         workers_stopping_ = true;
+        generation_queue_.clear();
+        generation_pending_set_.clear();
     }
     generation_cv_.notify_all();
 
@@ -247,6 +249,9 @@ void ResidencyController::worker_main() {
 
         {
             std::scoped_lock lock(generation_mutex_);
+            if (workers_stopping_) {
+                continue;
+            }
             generated_chunk_queue_.push_back(std::move(generated));
         }
     }

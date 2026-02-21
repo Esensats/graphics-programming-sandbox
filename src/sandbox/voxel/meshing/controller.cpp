@@ -457,6 +457,8 @@ void Controller::stop_workers() {
     {
         std::scoped_lock lock(worker_mutex_);
         workers_stopping_ = true;
+        build_queue_.clear();
+        build_pending_set_.clear();
     }
     worker_cv_.notify_all();
 
@@ -490,6 +492,9 @@ void Controller::worker_main() {
 
         {
             std::scoped_lock lock(worker_mutex_);
+            if (workers_stopping_) {
+                continue;
+            }
             completed_queue_.push_back(std::move(mesh));
         }
     }
