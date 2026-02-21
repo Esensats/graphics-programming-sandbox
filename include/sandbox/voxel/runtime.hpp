@@ -1,5 +1,6 @@
 #pragma once
 
+#include "sandbox/voxel/meshing/controller.hpp"
 #include "sandbox/voxel/streaming/residency.hpp"
 #include "sandbox/voxel/world/world.hpp"
 
@@ -22,6 +23,7 @@ class Runtime {
     double simulation_time_seconds_ = 0.0;
     world::World world_{};
     streaming::ResidencyController residency_{};
+    meshing::Controller meshing_{};
 };
 
 } // namespace sandbox::voxel

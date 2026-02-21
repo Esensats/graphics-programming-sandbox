@@ -436,16 +436,16 @@ These are the recommended first coding tasks after this document lands:
 
 Use this section as lightweight status tracking:
 
-- **Current milestone:** `M2`
+- **Current milestone:** `M3`
 - **Completed items:**
   - Planning doc created
   - Voxel gameplay state scaffold added and wired in selector/factory
   - Voxel runtime shell added with clean state lifecycle ownership
   - M1 dense world core (`32^3` chunk representation and world access APIs)
 - **In progress:**
-  - M2 residency policy with worker-thread generation and main-thread chunk commit
+  - M3 meshing pipeline scaffold (dirty chunks -> worker mesh build -> main-thread upload queue)
 - **Next:**
-  - Introduce meshing pipeline queues and generalized job-system interfaces
+  - Add chunk frustum culling path and GPU upload-backed mesh handles
 - **Known risks:**
   - No generic job system exists yet; will need careful design in early milestones
 

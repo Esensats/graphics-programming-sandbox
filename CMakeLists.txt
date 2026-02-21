@@ -62,6 +62,7 @@ add_executable(${PROJECT_NAME}
     src/sandbox/states/hello_cube_state.cpp
     src/sandbox/states/voxel_game_state.cpp
     src/sandbox/voxel/runtime.cpp
+    src/sandbox/voxel/meshing/controller.cpp
     src/sandbox/voxel/streaming/residency.cpp
     src/sandbox/voxel/streaming/terrain_generator.cpp
     src/sandbox/voxel/world/world.cpp
