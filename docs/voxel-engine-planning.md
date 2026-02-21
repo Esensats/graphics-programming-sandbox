@@ -449,6 +449,7 @@ Use this section as lightweight status tracking:
   - Frustum-ready chunk visibility query over pass buckets (distance cull + plane hook)
   - First on-screen real chunk mesh rendering path from uploaded pass meshes
   - Fast-exit worker teardown hardening (drop pending generation/meshing queues on shutdown)
+  - Dedicated voxel surface shader + translucent depth-write policy baseline
 - **Next:**
   - Replace placeholder color-only shading with material/texture-aware voxel surface shading
 - **Known risks:**

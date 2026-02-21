@@ -16,8 +16,12 @@ namespace {
 
 void draw_commands(unsigned int program,
                    const glm::mat4& view_projection,
-                   const std::vector<voxel::meshing::DrawCommand>& commands) {
+                   const std::vector<voxel::meshing::DrawCommand>& commands,
+                   float alpha) {
     const int mvp_loc = glGetUniformLocation(program, "u_mvp");
+    const int alpha_loc = glGetUniformLocation(program, "u_alpha");
+    glUniform1f(alpha_loc, alpha);
+
     for (const voxel::meshing::DrawCommand& command : commands) {
         if (command.vao == 0 || command.index_count <= 0) {
             continue;
@@ -38,7 +42,7 @@ void VoxelGameState::on_enter(AppContext& context) {
     (void)context;
     runtime_.initialize();
 
-    program_ = graphics::create_program_from_files("hello_cube.vert", "hello_cube.frag");
+    program_ = graphics::create_program_from_files("voxel_chunk.vert", "voxel_chunk.frag");
     if (program_ == 0) {
         LOG_ERROR("Failed to create voxel program");
     }
@@ -109,15 +113,28 @@ StateTransition VoxelGameState::update(AppContext& context, float delta_seconds)
     });
 
     glUseProgram(program_);
+    const int camera_loc = glGetUniformLocation(program_, "u_camera_world");
+    glUniform3f(camera_loc, eye.x, eye.y, eye.z);
 
+    const int fog_color_loc = glGetUniformLocation(program_, "u_fog_color");
+    glUniform3f(fog_color_loc, 0.03f, 0.05f, 0.08f);
+
+    const int fog_near_loc = glGetUniformLocation(program_, "u_fog_near");
+    const int fog_far_loc = glGetUniformLocation(program_, "u_fog_far");
+    glUniform1f(fog_near_loc, 140.0f);
+    glUniform1f(fog_far_loc, 700.0f);
+
+    glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
-    draw_commands(program_, view_projection, visible_draws.opaque);
-    draw_commands(program_, view_projection, visible_draws.cutout);
+    draw_commands(program_, view_projection, visible_draws.opaque, 1.0f);
+    draw_commands(program_, view_projection, visible_draws.cutout, 1.0f);
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    draw_commands(program_, view_projection, visible_draws.translucent);
+    glDepthMask(GL_FALSE);
+    draw_commands(program_, view_projection, visible_draws.translucent, 0.55f);
 
+    glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
 
     return StateTransition::none();
