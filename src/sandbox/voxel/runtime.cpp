@@ -84,4 +84,8 @@ meshing::RenderPassBuckets Runtime::visible_render_pass_buckets(const meshing::V
     return meshing_.visible_render_pass_buckets(query);
 }
 
+meshing::VisibleDrawLists Runtime::visible_draw_lists(const meshing::VisibilityQuery& query) const {
+    return meshing_.visible_draw_lists(query);
+}
+
 } // namespace sandbox::voxel

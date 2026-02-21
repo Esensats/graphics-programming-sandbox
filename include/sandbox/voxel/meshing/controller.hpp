@@ -11,6 +11,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "sandbox/graphics/mesh_utils.hpp"
 #include "sandbox/voxel/world/world.hpp"
 
 namespace sandbox::voxel::meshing {
@@ -22,6 +23,11 @@ struct MeshingConfig {
 };
 
 struct ChunkMeshInfo {
+  struct SurfaceMesh {
+    std::vector<float> vertices{};
+    std::vector<unsigned int> indices{};
+  };
+
     world::ChunkKey key{};
     std::uint32_t solid_voxel_count = 0;
   std::uint32_t non_full_voxel_count = 0;
@@ -29,6 +35,21 @@ struct ChunkMeshInfo {
   std::uint32_t cutout_face_count = 0;
   std::uint32_t translucent_face_count = 0;
   std::uint32_t total_exposed_face_count = 0;
+
+  SurfaceMesh opaque_mesh{};
+  SurfaceMesh cutout_mesh{};
+  SurfaceMesh translucent_mesh{};
+};
+
+struct DrawCommand {
+  unsigned int vao = 0;
+  int index_count = 0;
+};
+
+struct VisibleDrawLists {
+  std::vector<DrawCommand> opaque{};
+  std::vector<DrawCommand> cutout{};
+  std::vector<DrawCommand> translucent{};
 };
 
 struct RenderPassBuckets {
@@ -75,6 +96,7 @@ class Controller {
     [[nodiscard]] RenderPassBuckets render_pass_buckets() const;
     [[nodiscard]] RenderPassStats render_pass_stats() const;
     [[nodiscard]] RenderPassBuckets visible_render_pass_buckets(const VisibilityQuery& query) const;
+    [[nodiscard]] VisibleDrawLists visible_draw_lists(const VisibilityQuery& query) const;
 
   private:
     struct BuildRequest {
@@ -94,6 +116,18 @@ class Controller {
     [[nodiscard]] static ChunkMeshInfo build_chunk_mesh(const BuildRequest& request);
     [[nodiscard]] static bool is_chunk_visible(const world::ChunkKey& key, const VisibilityQuery& query);
 
+    struct ChunkGpuMesh {
+      graphics::IndexedMeshHandles opaque{};
+      graphics::IndexedMeshHandles cutout{};
+      graphics::IndexedMeshHandles translucent{};
+    };
+
+    static void destroy_chunk_gpu_mesh(ChunkGpuMesh& mesh);
+    static bool upload_surface_to_gpu(const ChunkMeshInfo::SurfaceMesh& surface,
+                      graphics::IndexedMeshHandles& handles);
+
+    void prune_unloaded_chunks_locked(const world::World& world);
+
     MeshingConfig config_{};
     bool initialized_ = false;
 
@@ -103,6 +137,7 @@ class Controller {
 
     std::deque<ChunkMeshInfo> upload_queue_{};
     std::unordered_map<world::ChunkKey, ChunkMeshInfo, world::ChunkKeyHash> uploaded_meshes_{};
+    std::unordered_map<world::ChunkKey, ChunkGpuMesh, world::ChunkKeyHash> gpu_meshes_{};
     RenderPassBuckets render_pass_buckets_{};
     RenderPassStats render_pass_stats_{};
 

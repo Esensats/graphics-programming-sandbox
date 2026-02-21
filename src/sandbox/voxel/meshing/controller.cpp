@@ -1,6 +1,7 @@
 #include "sandbox/voxel/meshing/controller.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <utility>
 
@@ -9,6 +10,11 @@
 namespace sandbox::voxel::meshing {
 
 namespace {
+
+constexpr std::array<graphics::VertexAttribute, 2> k_position_color_attributes{{
+    {0, 3, 6, 0},
+    {1, 3, 6, 3},
+}};
 
 [[nodiscard]] bool should_emit_face(
     world::BlockId current_block,
@@ -56,6 +62,103 @@ struct ChunkBounds {
     };
 }
 
+[[nodiscard]] std::array<float, 3> layer_color(world::RenderLayer layer) {
+    switch (layer) {
+        case world::RenderLayer::opaque:
+            return {0.50f, 0.80f, 0.35f};
+        case world::RenderLayer::cutout:
+            return {0.20f, 0.95f, 0.25f};
+        case world::RenderLayer::translucent:
+            return {0.30f, 0.55f, 0.95f};
+    }
+
+    return {1.0f, 1.0f, 1.0f};
+}
+
+void append_face(ChunkMeshInfo::SurfaceMesh& surface,
+                 const std::array<std::array<float, 3>, 4>& positions,
+                 world::RenderLayer layer) {
+    const std::array<float, 3> color = layer_color(layer);
+    const unsigned int base_index = static_cast<unsigned int>(surface.vertices.size() / 6);
+
+    for (const auto& pos : positions) {
+        surface.vertices.push_back(pos[0]);
+        surface.vertices.push_back(pos[1]);
+        surface.vertices.push_back(pos[2]);
+        surface.vertices.push_back(color[0]);
+        surface.vertices.push_back(color[1]);
+        surface.vertices.push_back(color[2]);
+    }
+
+    surface.indices.push_back(base_index + 0);
+    surface.indices.push_back(base_index + 1);
+    surface.indices.push_back(base_index + 2);
+    surface.indices.push_back(base_index + 2);
+    surface.indices.push_back(base_index + 3);
+    surface.indices.push_back(base_index + 0);
+}
+
+void append_voxel_face(ChunkMeshInfo::SurfaceMesh& surface,
+                       world::RenderLayer layer,
+                       float x,
+                       float y,
+                       float z,
+                       int face_index) {
+    switch (face_index) {
+        case 0:
+            append_face(surface, {{{x + 1.0f, y + 0.0f, z + 0.0f},
+                                  {x + 1.0f, y + 1.0f, z + 0.0f},
+                                  {x + 1.0f, y + 1.0f, z + 1.0f},
+                                  {x + 1.0f, y + 0.0f, z + 1.0f}}}, layer);
+            break;
+        case 1:
+            append_face(surface, {{{x + 0.0f, y + 0.0f, z + 1.0f},
+                                  {x + 0.0f, y + 1.0f, z + 1.0f},
+                                  {x + 0.0f, y + 1.0f, z + 0.0f},
+                                  {x + 0.0f, y + 0.0f, z + 0.0f}}}, layer);
+            break;
+        case 2:
+            append_face(surface, {{{x + 0.0f, y + 1.0f, z + 0.0f},
+                                  {x + 0.0f, y + 1.0f, z + 1.0f},
+                                  {x + 1.0f, y + 1.0f, z + 1.0f},
+                                  {x + 1.0f, y + 1.0f, z + 0.0f}}}, layer);
+            break;
+        case 3:
+            append_face(surface, {{{x + 0.0f, y + 0.0f, z + 1.0f},
+                                  {x + 0.0f, y + 0.0f, z + 0.0f},
+                                  {x + 1.0f, y + 0.0f, z + 0.0f},
+                                  {x + 1.0f, y + 0.0f, z + 1.0f}}}, layer);
+            break;
+        case 4:
+            append_face(surface, {{{x + 1.0f, y + 0.0f, z + 1.0f},
+                                  {x + 1.0f, y + 1.0f, z + 1.0f},
+                                  {x + 0.0f, y + 1.0f, z + 1.0f},
+                                  {x + 0.0f, y + 0.0f, z + 1.0f}}}, layer);
+            break;
+        case 5:
+            append_face(surface, {{{x + 0.0f, y + 0.0f, z + 0.0f},
+                                  {x + 0.0f, y + 1.0f, z + 0.0f},
+                                  {x + 1.0f, y + 1.0f, z + 0.0f},
+                                  {x + 1.0f, y + 0.0f, z + 0.0f}}}, layer);
+            break;
+        default:
+            break;
+    }
+}
+
+ChunkMeshInfo::SurfaceMesh& mesh_for_layer(ChunkMeshInfo& mesh_info, world::RenderLayer layer) {
+    switch (layer) {
+        case world::RenderLayer::opaque:
+            return mesh_info.opaque_mesh;
+        case world::RenderLayer::cutout:
+            return mesh_info.cutout_mesh;
+        case world::RenderLayer::translucent:
+            return mesh_info.translucent_mesh;
+    }
+
+    return mesh_info.opaque_mesh;
+}
+
 } // namespace
 
 void Controller::initialize(const MeshingConfig& config) {
@@ -67,7 +170,14 @@ void Controller::initialize(const MeshingConfig& config) {
         completed_queue_.clear();
         build_pending_set_.clear();
         upload_queue_.clear();
+
+        for (auto& [key, gpu] : gpu_meshes_) {
+            (void)key;
+            destroy_chunk_gpu_mesh(gpu);
+        }
+
         uploaded_meshes_.clear();
+        gpu_meshes_.clear();
         render_pass_buckets_ = RenderPassBuckets{};
         render_pass_stats_ = RenderPassStats{};
         workers_stopping_ = false;
@@ -86,7 +196,14 @@ void Controller::shutdown() {
         completed_queue_.clear();
         build_pending_set_.clear();
         upload_queue_.clear();
+
+        for (auto& [key, gpu] : gpu_meshes_) {
+            (void)key;
+            destroy_chunk_gpu_mesh(gpu);
+        }
+
         uploaded_meshes_.clear();
+        gpu_meshes_.clear();
         render_pass_buckets_ = RenderPassBuckets{};
         render_pass_stats_ = RenderPassStats{};
     }
@@ -160,7 +277,55 @@ RenderPassBuckets Controller::visible_render_pass_buckets(const VisibilityQuery&
     return visible;
 }
 
+VisibleDrawLists Controller::visible_draw_lists(const VisibilityQuery& query) const {
+    VisibleDrawLists draws{};
+
+    std::scoped_lock lock(worker_mutex_);
+    draws.opaque.reserve(render_pass_buckets_.opaque_chunks.size());
+    draws.cutout.reserve(render_pass_buckets_.cutout_chunks.size());
+    draws.translucent.reserve(render_pass_buckets_.translucent_chunks.size());
+
+    auto push_for_keys = [this, &query](const std::vector<world::ChunkKey>& keys,
+                                        std::vector<DrawCommand>& out,
+                                        auto get_handles) {
+        for (const world::ChunkKey& key : keys) {
+            if (!is_chunk_visible(key, query)) {
+                continue;
+            }
+
+            const auto it = gpu_meshes_.find(key);
+            if (it == gpu_meshes_.end()) {
+                continue;
+            }
+
+            const graphics::IndexedMeshHandles& handles = get_handles(it->second);
+            if (handles.vao == 0 || handles.index_count <= 0) {
+                continue;
+            }
+
+            out.push_back(DrawCommand{.vao = handles.vao, .index_count = handles.index_count});
+        }
+    };
+
+    push_for_keys(render_pass_buckets_.opaque_chunks, draws.opaque, [](const ChunkGpuMesh& mesh) -> const graphics::IndexedMeshHandles& {
+        return mesh.opaque;
+    });
+    push_for_keys(render_pass_buckets_.cutout_chunks, draws.cutout, [](const ChunkGpuMesh& mesh) -> const graphics::IndexedMeshHandles& {
+        return mesh.cutout;
+    });
+    push_for_keys(render_pass_buckets_.translucent_chunks, draws.translucent, [](const ChunkGpuMesh& mesh) -> const graphics::IndexedMeshHandles& {
+        return mesh.translucent;
+    });
+
+    return draws;
+}
+
 void Controller::enqueue_dirty_chunks(world::World& world) {
+    {
+        std::scoped_lock lock(worker_mutex_);
+        prune_unloaded_chunks_locked(world);
+    }
+
     const auto keys = world.chunk_keys();
 
     {
@@ -217,7 +382,21 @@ void Controller::process_upload_queue() {
     for (std::size_t index = 0; index < process_count; ++index) {
         ChunkMeshInfo mesh = std::move(upload_queue_.front());
         upload_queue_.pop_front();
-        uploaded_meshes_[mesh.key] = mesh;
+
+        ChunkGpuMesh& gpu = gpu_meshes_[mesh.key];
+        destroy_chunk_gpu_mesh(gpu);
+
+        if (!upload_surface_to_gpu(mesh.opaque_mesh, gpu.opaque)) {
+            graphics::destroy_indexed_mesh(gpu.opaque);
+        }
+        if (!upload_surface_to_gpu(mesh.cutout_mesh, gpu.cutout)) {
+            graphics::destroy_indexed_mesh(gpu.cutout);
+        }
+        if (!upload_surface_to_gpu(mesh.translucent_mesh, gpu.translucent)) {
+            graphics::destroy_indexed_mesh(gpu.translucent);
+        }
+
+        uploaded_meshes_[mesh.key] = std::move(mesh);
         any_uploads_committed = true;
     }
 
@@ -322,11 +501,8 @@ ChunkMeshInfo Controller::build_chunk_mesh(const BuildRequest& request) {
         return request.blocks[world::flatten_local_coord(coord)];
     };
 
-    std::uint32_t solid_count = 0;
-    std::uint32_t non_full_voxel_count = 0;
-    std::uint32_t opaque_faces = 0;
-    std::uint32_t cutout_faces = 0;
-    std::uint32_t translucent_faces = 0;
+    ChunkMeshInfo mesh_info{};
+    mesh_info.key = request.key;
 
     for (int z = 0; z < world::kChunkExtent; ++z) {
         for (int y = 0; y < world::kChunkExtent; ++y) {
@@ -337,9 +513,9 @@ ChunkMeshInfo Controller::build_chunk_mesh(const BuildRequest& request) {
                     continue;
                 }
 
-                ++solid_count;
+                ++mesh_info.solid_voxel_count;
                 if (!world::is_full_cube(traits.shape)) {
-                    ++non_full_voxel_count;
+                    ++mesh_info.non_full_voxel_count;
                 }
 
                 auto count_face = [&](bool visible) {
@@ -349,13 +525,13 @@ ChunkMeshInfo Controller::build_chunk_mesh(const BuildRequest& request) {
 
                     switch (traits.render_layer) {
                         case world::RenderLayer::opaque:
-                            ++opaque_faces;
+                            ++mesh_info.opaque_face_count;
                             break;
                         case world::RenderLayer::cutout:
-                            ++cutout_faces;
+                            ++mesh_info.cutout_face_count;
                             break;
                         case world::RenderLayer::translucent:
-                            ++translucent_faces;
+                            ++mesh_info.translucent_face_count;
                             break;
                     }
                 };
@@ -365,70 +541,72 @@ ChunkMeshInfo Controller::build_chunk_mesh(const BuildRequest& request) {
                     return std::pair{neighbor_id, world::block_traits(neighbor_id)};
                 };
 
-                const bool pos_x_exposed = [&]() {
-                    if (x == world::kChunkExtent - 1) {
-                        return true;
-                    }
-                    const auto [neighbor_id, neighbor] = neighbor_traits(x + 1, y, z);
-                    return should_emit_face(block_id, traits, neighbor_id, neighbor);
-                }();
-                const bool neg_x_exposed = [&]() {
-                    if (x == 0) {
-                        return true;
-                    }
-                    const auto [neighbor_id, neighbor] = neighbor_traits(x - 1, y, z);
-                    return should_emit_face(block_id, traits, neighbor_id, neighbor);
-                }();
-                const bool pos_y_exposed = [&]() {
-                    if (y == world::kChunkExtent - 1) {
-                        return true;
-                    }
-                    const auto [neighbor_id, neighbor] = neighbor_traits(x, y + 1, z);
-                    return should_emit_face(block_id, traits, neighbor_id, neighbor);
-                }();
-                const bool neg_y_exposed = [&]() {
-                    if (y == 0) {
-                        return true;
-                    }
-                    const auto [neighbor_id, neighbor] = neighbor_traits(x, y - 1, z);
-                    return should_emit_face(block_id, traits, neighbor_id, neighbor);
-                }();
-                const bool pos_z_exposed = [&]() {
-                    if (z == world::kChunkExtent - 1) {
-                        return true;
-                    }
-                    const auto [neighbor_id, neighbor] = neighbor_traits(x, y, z + 1);
-                    return should_emit_face(block_id, traits, neighbor_id, neighbor);
-                }();
-                const bool neg_z_exposed = [&]() {
-                    if (z == 0) {
-                        return true;
-                    }
-                    const auto [neighbor_id, neighbor] = neighbor_traits(x, y, z - 1);
-                    return should_emit_face(block_id, traits, neighbor_id, neighbor);
-                }();
+                const bool face_visible[6] = {
+                    [&]() {
+                        if (x == world::kChunkExtent - 1) {
+                            return true;
+                        }
+                        const auto [neighbor_id, neighbor] = neighbor_traits(x + 1, y, z);
+                        return should_emit_face(block_id, traits, neighbor_id, neighbor);
+                    }(),
+                    [&]() {
+                        if (x == 0) {
+                            return true;
+                        }
+                        const auto [neighbor_id, neighbor] = neighbor_traits(x - 1, y, z);
+                        return should_emit_face(block_id, traits, neighbor_id, neighbor);
+                    }(),
+                    [&]() {
+                        if (y == world::kChunkExtent - 1) {
+                            return true;
+                        }
+                        const auto [neighbor_id, neighbor] = neighbor_traits(x, y + 1, z);
+                        return should_emit_face(block_id, traits, neighbor_id, neighbor);
+                    }(),
+                    [&]() {
+                        if (y == 0) {
+                            return true;
+                        }
+                        const auto [neighbor_id, neighbor] = neighbor_traits(x, y - 1, z);
+                        return should_emit_face(block_id, traits, neighbor_id, neighbor);
+                    }(),
+                    [&]() {
+                        if (z == world::kChunkExtent - 1) {
+                            return true;
+                        }
+                        const auto [neighbor_id, neighbor] = neighbor_traits(x, y, z + 1);
+                        return should_emit_face(block_id, traits, neighbor_id, neighbor);
+                    }(),
+                    [&]() {
+                        if (z == 0) {
+                            return true;
+                        }
+                        const auto [neighbor_id, neighbor] = neighbor_traits(x, y, z - 1);
+                        return should_emit_face(block_id, traits, neighbor_id, neighbor);
+                    }(),
+                };
 
-                count_face(pos_x_exposed);
-                count_face(neg_x_exposed);
-                count_face(pos_y_exposed);
-                count_face(neg_y_exposed);
-                count_face(pos_z_exposed);
-                count_face(neg_z_exposed);
+                for (int face = 0; face < 6; ++face) {
+                    count_face(face_visible[face]);
+                    if (!face_visible[face]) {
+                        continue;
+                    }
+
+                    const float world_x = static_cast<float>(request.key.x * world::kChunkExtent + x);
+                    const float world_y = static_cast<float>(request.key.y * world::kChunkExtent + y);
+                    const float world_z = static_cast<float>(request.key.z * world::kChunkExtent + z);
+
+                    ChunkMeshInfo::SurfaceMesh& surface = mesh_for_layer(mesh_info, traits.render_layer);
+                    append_voxel_face(surface, traits.render_layer, world_x, world_y, world_z, face);
+                }
             }
         }
     }
 
-    const std::uint32_t total_exposed_faces = opaque_faces + cutout_faces + translucent_faces;
+    mesh_info.total_exposed_face_count =
+        mesh_info.opaque_face_count + mesh_info.cutout_face_count + mesh_info.translucent_face_count;
 
-    return ChunkMeshInfo{
-        .key = request.key,
-        .solid_voxel_count = solid_count,
-        .non_full_voxel_count = non_full_voxel_count,
-        .opaque_face_count = opaque_faces,
-        .cutout_face_count = cutout_faces,
-        .translucent_face_count = translucent_faces,
-        .total_exposed_face_count = total_exposed_faces,
-    };
+    return mesh_info;
 }
 
 bool Controller::is_chunk_visible(const world::ChunkKey& key, const VisibilityQuery& query) {
@@ -460,6 +638,51 @@ bool Controller::is_chunk_visible(const world::ChunkKey& key, const VisibilityQu
     }
 
     return true;
+}
+
+void Controller::destroy_chunk_gpu_mesh(ChunkGpuMesh& mesh) {
+    graphics::destroy_indexed_mesh(mesh.opaque);
+    graphics::destroy_indexed_mesh(mesh.cutout);
+    graphics::destroy_indexed_mesh(mesh.translucent);
+}
+
+bool Controller::upload_surface_to_gpu(const ChunkMeshInfo::SurfaceMesh& surface,
+                                       graphics::IndexedMeshHandles& handles) {
+    if (surface.vertices.empty() || surface.indices.empty()) {
+        return false;
+    }
+
+    return graphics::create_indexed_mesh(surface.vertices, surface.indices, k_position_color_attributes, handles);
+}
+
+void Controller::prune_unloaded_chunks_locked(const world::World& world) {
+    std::unordered_set<world::ChunkKey, world::ChunkKeyHash> loaded_keys;
+    for (const world::ChunkKey& key : world.chunk_keys()) {
+        loaded_keys.insert(key);
+    }
+
+    std::vector<world::ChunkKey> remove_keys;
+    remove_keys.reserve(uploaded_meshes_.size());
+
+    for (const auto& [key, mesh] : uploaded_meshes_) {
+        (void)mesh;
+        if (!loaded_keys.contains(key)) {
+            remove_keys.push_back(key);
+        }
+    }
+
+    for (const world::ChunkKey& key : remove_keys) {
+        uploaded_meshes_.erase(key);
+        auto gpu_it = gpu_meshes_.find(key);
+        if (gpu_it != gpu_meshes_.end()) {
+            destroy_chunk_gpu_mesh(gpu_it->second);
+            gpu_meshes_.erase(gpu_it);
+        }
+    }
+
+    if (!remove_keys.empty()) {
+        rebuild_render_pass_buckets_locked();
+    }
 }
 
 } // namespace sandbox::voxel::meshing

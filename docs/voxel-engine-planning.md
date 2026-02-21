@@ -447,9 +447,9 @@ Use this section as lightweight status tracking:
   - Meshing metadata path for future non-full and translucent blocks (water/slabs/grass/glass)
   - Render-pass bucket preparation for opaque/cutout/translucent chunk draw ordering
   - Frustum-ready chunk visibility query over pass buckets (distance cull + plane hook)
-  - First on-screen voxel chunk proxy rendering path from visible pass buckets
+  - First on-screen real chunk mesh rendering path from uploaded pass meshes
 - **Next:**
-  - Add chunk frustum culling path and GPU upload-backed mesh handles
+  - Replace placeholder color-only shading with material/texture-aware voxel surface shading
 - **Known risks:**
   - No generic job system exists yet; will need careful design in early milestones
 
