@@ -67,6 +67,23 @@ void ResidencyController::update(world::World& world) {
     process_unload_jobs(world);
 }
 
+void ResidencyController::regenerate_loaded_chunks(world::World& world) {
+    if (!initialized_) {
+        return;
+    }
+
+    const std::vector<world::ChunkKey> keys = world.chunk_keys();
+    for (const world::ChunkKey& key : keys) {
+        world::Chunk* chunk = world.find_chunk(key);
+        if (chunk == nullptr) {
+            continue;
+        }
+
+        generator_.populate_chunk(key, *chunk);
+        chunk->mark_dirty_mesh();
+    }
+}
+
 bool ResidencyController::initialized() const {
     return initialized_;
 }

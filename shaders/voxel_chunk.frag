@@ -14,7 +14,11 @@ uniform sampler2DArray u_albedo_array;
 out vec4 FragColor;
 
 void main() {
-    vec3 base = texture(u_albedo_array, vec3(v_uv, v_material_layer)).rgb;
+    vec4 tex_color = texture(u_albedo_array, vec3(v_uv, v_material_layer));
+    // if (tex_color.a < 0.1) {
+    //     discard;
+    // }
+    vec3 base = tex_color.rgb;
 
     float height_light = clamp(0.72 + v_world_pos.y * 0.0025, 0.55, 1.0);
     vec3 lit = base * height_light;
@@ -23,5 +27,5 @@ void main() {
     float fog_t = clamp((dist - u_fog_near) / max(u_fog_far - u_fog_near, 0.001), 0.0, 1.0);
     vec3 final_rgb = mix(lit, u_fog_color, fog_t);
 
-    FragColor = vec4(final_rgb, u_alpha);
+    FragColor = vec4(final_rgb, tex_color.a * u_alpha);
 }

@@ -442,6 +442,8 @@ Use this section as lightweight status tracking:
   - Voxel gameplay state scaffold added and wired in selector/factory
   - Voxel runtime shell added with clean state lifecycle ownership
   - M1 dense world core (`32^3` chunk representation and world access APIs)
+  - Voxel gameplay HUD overlays: F3 debug telemetry panel and ESC pause menu (Resume / Exit to selector)
+  - Voxel camera logic extracted from gameplay state into dedicated module to prepare for ECS/player ownership
 - **In progress:**
   - M3 meshing pipeline scaffold (dirty chunks -> worker mesh build -> main-thread upload queue)
   - Meshing metadata path for future non-full and translucent blocks (water/slabs/grass/glass)

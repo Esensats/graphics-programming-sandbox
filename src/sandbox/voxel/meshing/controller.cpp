@@ -508,6 +508,7 @@ ChunkMeshInfo Controller::build_chunk_mesh(const BuildRequest& request) {
         for (int y = 0; y < world::kChunkExtent; ++y) {
             for (int x = 0; x < world::kChunkExtent; ++x) {
                 const world::BlockId block_id = block_at(x, y, z);
+                const float material_layer = world::block_material_layer(block_id);
                 const world::BlockTraits traits = world::block_traits(block_id);
                 if (traits.empty) {
                     continue;
@@ -598,7 +599,7 @@ ChunkMeshInfo Controller::build_chunk_mesh(const BuildRequest& request) {
 
                     ChunkMeshInfo::SurfaceMesh& surface = mesh_for_layer(mesh_info, traits.render_layer);
                     append_voxel_face(surface,
-                                      world::block_material_layer(block_id),
+                                      material_layer,
                                       world_x,
                                       world_y,
                                       world_z,

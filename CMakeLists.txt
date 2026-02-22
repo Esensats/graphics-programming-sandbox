@@ -60,7 +60,9 @@ add_executable(${PROJECT_NAME}
     src/sandbox/states/selector_menu_state.cpp
     src/sandbox/states/fragment_playground_state.cpp
     src/sandbox/states/hello_cube_state.cpp
+    src/sandbox/voxel/ui/game_overlay.cpp
     src/sandbox/states/voxel_game_state.cpp
+    src/sandbox/voxel/camera/fly_camera.cpp
     src/sandbox/voxel/runtime.cpp
     src/sandbox/voxel/meshing/controller.cpp
     src/sandbox/voxel/render/material_pack.cpp

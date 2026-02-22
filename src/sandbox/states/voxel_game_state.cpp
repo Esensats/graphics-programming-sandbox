@@ -1,12 +1,10 @@
 #include "sandbox/states/voxel_game_state.hpp"
 
-#include <algorithm>
-#include <cmath>
+#include <cstddef>
 
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
 #include "sandbox/app_context.hpp"
@@ -42,10 +40,17 @@ void draw_commands(unsigned int program,
     glBindVertexArray(0);
 }
 
+bool consume_edge_press(bool key_pressed_now, bool& key_pressed_last_frame) {
+    const bool edge_pressed = key_pressed_now && !key_pressed_last_frame;
+    key_pressed_last_frame = key_pressed_now;
+    return edge_pressed;
+}
+
 } // namespace
 
 void VoxelGameState::on_enter(AppContext& context) {
     runtime_.initialize();
+    overlay_.on_enter(context);
     material_pack_ = voxel::render::create_material_pack_from_directory(SANDBOX_RESOURCE_PACK_DIR "/default");
 
     program_ = graphics::create_program_from_files("voxel_chunk.vert", "voxel_chunk.frag");
@@ -59,11 +64,20 @@ void VoxelGameState::on_enter(AppContext& context) {
 
     accumulator_seconds_ = 0.0f;
     elapsed_seconds_ = 0.0f;
-    camera_position_ = glm::vec3(0.0f, 38.0f, 110.0f);
-    camera_yaw_degrees_ = -90.0f;
-    camera_pitch_degrees_ = -14.0f;
-    glfwGetCursorPos(context.window, &last_cursor_x_, &last_cursor_y_);
-    look_active_last_frame_ = false;
+    paused_ = false;
+    show_debug_overlay_ = false;
+    esc_pressed_last_frame_ = false;
+    f3_pressed_last_frame_ = false;
+    r_pressed_last_frame_ = false;
+    a_pressed_last_frame_ = false;
+    frame_time_ms_ = 0.0f;
+    fps_ = 0.0f;
+    tps_ = 0.0f;
+    tps_window_accumulator_seconds_ = 0.0f;
+    fixed_steps_in_tps_window_ = 0;
+
+    camera_.reset_default_pose();
+    camera_controller_.reset_cursor_tracking(context.window);
 
     glEnable(GL_DEPTH_TEST);
     LOG_INFO("Entered voxel game state");
@@ -71,12 +85,12 @@ void VoxelGameState::on_enter(AppContext& context) {
 
 void VoxelGameState::on_exit(AppContext& context) {
     glfwSetInputMode(context.window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-    look_active_last_frame_ = false;
 
     if (program_ != 0) {
         glDeleteProgram(program_);
         program_ = 0;
     }
+    overlay_.on_exit();
     voxel::render::destroy_material_pack(material_pack_);
 
     runtime_.shutdown();
@@ -88,103 +102,74 @@ void VoxelGameState::on_exit(AppContext& context) {
 
 StateTransition VoxelGameState::update(AppContext& context, float delta_seconds) {
     elapsed_seconds_ += delta_seconds;
-
-    const bool look_active = glfwGetMouseButton(context.window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
-    if (look_active) {
-        glfwSetInputMode(context.window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    } else {
-        glfwSetInputMode(context.window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    frame_time_ms_ = delta_seconds * 1000.0f;
+    if (delta_seconds > 0.0f) {
+        fps_ = 1.0f / delta_seconds;
     }
 
-    double cursor_x = 0.0;
-    double cursor_y = 0.0;
-    glfwGetCursorPos(context.window, &cursor_x, &cursor_y);
-    if (look_active) {
-        if (!look_active_last_frame_) {
-            last_cursor_x_ = cursor_x;
-            last_cursor_y_ = cursor_y;
+    const bool f3_pressed = glfwGetKey(context.window, GLFW_KEY_F3) == GLFW_PRESS;
+    const bool r_edge_pressed = consume_edge_press(glfwGetKey(context.window, GLFW_KEY_R) == GLFW_PRESS, r_pressed_last_frame_);
+    const bool a_edge_pressed = consume_edge_press(glfwGetKey(context.window, GLFW_KEY_A) == GLFW_PRESS, a_pressed_last_frame_);
+
+    if (f3_pressed && r_edge_pressed) {
+        runtime_.debug_regenerate_loaded_chunks();
+    }
+    if (f3_pressed && a_edge_pressed) {
+        runtime_.debug_mark_all_chunks_dirty_mesh();
+    }
+
+    if (consume_edge_press(f3_pressed, f3_pressed_last_frame_)) {
+        show_debug_overlay_ = !show_debug_overlay_;
+    }
+    if (consume_edge_press(glfwGetKey(context.window, GLFW_KEY_ESCAPE) == GLFW_PRESS, esc_pressed_last_frame_)) {
+        paused_ = !paused_;
+        accumulator_seconds_ = 0.0f;
+        tps_window_accumulator_seconds_ = 0.0f;
+        fixed_steps_in_tps_window_ = 0;
+        if (paused_) {
+            tps_ = 0.0f;
         }
-
-        const float dx = static_cast<float>(cursor_x - last_cursor_x_);
-        const float dy = static_cast<float>(cursor_y - last_cursor_y_);
-        const float look_sensitivity = 0.10f;
-
-        camera_yaw_degrees_ += dx * look_sensitivity;
-        camera_pitch_degrees_ -= dy * look_sensitivity;
-        camera_pitch_degrees_ = std::clamp(camera_pitch_degrees_, -89.0f, 89.0f);
-    }
-    last_cursor_x_ = cursor_x;
-    last_cursor_y_ = cursor_y;
-    look_active_last_frame_ = look_active;
-
-    const float yaw_rad = glm::radians(camera_yaw_degrees_);
-    const float pitch_rad = glm::radians(camera_pitch_degrees_);
-    const glm::vec3 camera_forward = glm::normalize(glm::vec3(
-        std::cos(yaw_rad) * std::cos(pitch_rad),
-        std::sin(pitch_rad),
-        std::sin(yaw_rad) * std::cos(pitch_rad)));
-    const glm::vec3 world_up = glm::vec3(0.0f, 1.0f, 0.0f);
-    const glm::vec3 camera_right = glm::normalize(glm::cross(camera_forward, world_up));
-
-    float move_speed = 24.0f;
-    const bool boost = glfwGetKey(context.window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS
-        || glfwGetKey(context.window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
-    if (boost) {
-        move_speed *= 3.0f;
-    }
-    const float move_step = move_speed * delta_seconds;
-
-    if (glfwGetKey(context.window, GLFW_KEY_W) == GLFW_PRESS) {
-        camera_position_ += camera_forward * move_step;
-    }
-    if (glfwGetKey(context.window, GLFW_KEY_S) == GLFW_PRESS) {
-        camera_position_ -= camera_forward * move_step;
-    }
-    if (glfwGetKey(context.window, GLFW_KEY_A) == GLFW_PRESS) {
-        camera_position_ -= camera_right * move_step;
-    }
-    if (glfwGetKey(context.window, GLFW_KEY_D) == GLFW_PRESS) {
-        camera_position_ += camera_right * move_step;
-    }
-    if (glfwGetKey(context.window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-        camera_position_ += world_up * move_step;
-    }
-    if (glfwGetKey(context.window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS
-        || glfwGetKey(context.window, GLFW_KEY_C) == GLFW_PRESS) {
-        camera_position_ -= world_up * move_step;
     }
 
-    accumulator_seconds_ += delta_seconds;
-    while (accumulator_seconds_ >= fixed_step_seconds_) {
-        runtime_.update_fixed(fixed_step_seconds_);
-        accumulator_seconds_ -= fixed_step_seconds_;
+    camera_controller_.update_from_window(context.window, delta_seconds, camera_, !paused_);
+
+    std::size_t fixed_steps_this_frame = 0;
+    if (!paused_) {
+        accumulator_seconds_ += delta_seconds;
+        while (accumulator_seconds_ >= fixed_step_seconds_) {
+            runtime_.update_fixed(fixed_step_seconds_);
+            accumulator_seconds_ -= fixed_step_seconds_;
+            ++fixed_steps_this_frame;
+        }
     }
+
     runtime_.update_frame(delta_seconds);
+
+    if (!paused_) {
+        fixed_steps_in_tps_window_ += fixed_steps_this_frame;
+        tps_window_accumulator_seconds_ += delta_seconds;
+        if (tps_window_accumulator_seconds_ >= 0.25f) {
+            if (tps_window_accumulator_seconds_ > 0.0f) {
+                tps_ = static_cast<float>(fixed_steps_in_tps_window_) / tps_window_accumulator_seconds_;
+            } else {
+                tps_ = 0.0f;
+            }
+            tps_window_accumulator_seconds_ = 0.0f;
+            fixed_steps_in_tps_window_ = 0;
+        }
+    }
 
     glEnable(GL_DEPTH_TEST);
     glViewport(0, 0, context.framebuffer_width, context.framebuffer_height);
     glClearColor(0.03f, 0.05f, 0.08f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    if (program_ == 0) {
-        return StateTransition::none();
-    }
-
-    const int safe_height = context.framebuffer_height > 0 ? context.framebuffer_height : 1;
-    const float aspect = static_cast<float>(context.framebuffer_width) / static_cast<float>(safe_height);
-
-    const glm::vec3 eye = camera_position_;
-    const glm::vec3 target = camera_position_ + camera_forward;
-
-    const glm::mat4 projection = glm::perspective(0.95f, aspect, 0.1f, 1200.0f);
-    const glm::mat4 view = glm::lookAt(eye, target, world_up);
+    const glm::vec3 eye = camera_.position();
+    const glm::mat4 projection = camera_.projection_matrix(context.framebuffer_width, context.framebuffer_height);
+    const glm::mat4 view = camera_.view_matrix();
     const glm::mat4 view_projection = projection * view;
 
-    const voxel::world::WorldVoxelCoord camera_world{
-        static_cast<int>(eye.x),
-        static_cast<int>(eye.y),
-        static_cast<int>(eye.z),
-    };
+    const voxel::world::WorldVoxelCoord camera_world = camera_.world_voxel_coord();
     const voxel::meshing::VisibleDrawLists visible_draws = runtime_.visible_draw_lists(voxel::meshing::VisibilityQuery{
         .origin_world = camera_world,
         .enable_distance_cull = true,
@@ -192,33 +177,68 @@ StateTransition VoxelGameState::update(AppContext& context, float delta_seconds)
         .enable_frustum_cull = false,
     });
 
-    glUseProgram(program_);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, material_pack_.albedo_array);
-    const int camera_loc = glGetUniformLocation(program_, "u_camera_world");
-    glUniform3f(camera_loc, eye.x, eye.y, eye.z);
+    const std::size_t visible_chunk_count = visible_draws.opaque.size()
+        + visible_draws.cutout.size()
+        + visible_draws.translucent.size();
 
-    const int fog_color_loc = glGetUniformLocation(program_, "u_fog_color");
-    glUniform3f(fog_color_loc, 0.03f, 0.05f, 0.08f);
+    if (program_ != 0) {
+        glUseProgram(program_);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, material_pack_.albedo_array);
+        const int camera_loc = glGetUniformLocation(program_, "u_camera_world");
+        glUniform3f(camera_loc, eye.x, eye.y, eye.z);
 
-    const int fog_near_loc = glGetUniformLocation(program_, "u_fog_near");
-    const int fog_far_loc = glGetUniformLocation(program_, "u_fog_far");
-    glUniform1f(fog_near_loc, 140.0f);
-    glUniform1f(fog_far_loc, 700.0f);
+        const int fog_color_loc = glGetUniformLocation(program_, "u_fog_color");
+        glUniform3f(fog_color_loc, 0.03f, 0.05f, 0.08f);
 
-    glDepthMask(GL_TRUE);
-    glDisable(GL_BLEND);
-    draw_commands(program_, view_projection, visible_draws.opaque, 1.0f);
-    draw_commands(program_, view_projection, visible_draws.cutout, 1.0f);
+        const int fog_near_loc = glGetUniformLocation(program_, "u_fog_near");
+        const int fog_far_loc = glGetUniformLocation(program_, "u_fog_far");
+        glUniform1f(fog_near_loc, 140.0f);
+        glUniform1f(fog_far_loc, 700.0f);
 
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDepthMask(GL_FALSE);
-    draw_commands(program_, view_projection, visible_draws.translucent, 0.55f);
+        glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
+        draw_commands(program_, view_projection, visible_draws.opaque, 1.0f);
+        draw_commands(program_, view_projection, visible_draws.cutout, 1.0f);
 
-    glDepthMask(GL_TRUE);
-    glDisable(GL_BLEND);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_FALSE);
+        draw_commands(program_, view_projection, visible_draws.translucent, 1.0f);
+
+        glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+    }
+
+    overlay_.begin_frame();
+    if (show_debug_overlay_) {
+        const voxel::RuntimeDebugSnapshot runtime_snapshot = runtime_.debug_snapshot();
+        overlay_.draw_debug_overlay(voxel::ui::DebugOverlayData{
+            .fps = fps_,
+            .frame_time_ms = frame_time_ms_,
+            .tps = tps_,
+            .camera_position = eye,
+            .camera_yaw_degrees = camera_.yaw_degrees_wrapped(),
+            .camera_pitch_degrees = camera_.pitch_degrees(),
+            .camera_chunk = camera_.chunk_key(),
+            .camera_local = camera_.local_coord(),
+            .active_chunk_count = runtime_snapshot.active_chunk_count,
+            .visible_chunk_count = visible_chunk_count,
+            .generation_queued_count = runtime_snapshot.generation_queued_count,
+            .upload_queued_count = runtime_snapshot.upload_queued_count,
+        });
+    }
+
+    const voxel::ui::PauseOverlayResult pause_result = overlay_.draw_pause_menu(paused_);
+    overlay_.end_frame();
+
+    if (pause_result.resume_requested) {
+        paused_ = false;
+    }
+    if (pause_result.exit_to_selector_requested) {
+        return StateTransition::to(AppStateId::selector_menu);
+    }
 
     return StateTransition::none();
 }

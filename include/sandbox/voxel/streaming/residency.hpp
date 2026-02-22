@@ -31,6 +31,7 @@ class ResidencyController {
 
     void set_focus_world(world::WorldVoxelCoord focus_coord);
     void update(world::World& world);
+    void regenerate_loaded_chunks(world::World& world);
 
     [[nodiscard]] bool initialized() const;
     [[nodiscard]] std::size_t queued_generation_count() const;
