@@ -165,13 +165,14 @@ void Controller::initialize(const MeshingConfig& config) {
         completed_queue_.clear();
         build_pending_set_.clear();
         upload_queue_.clear();
+        upload_pending_set_.clear();
 
         for (auto& [key, gpu] : gpu_meshes_) {
             (void)key;
             destroy_chunk_gpu_mesh(gpu);
         }
 
-        uploaded_meshes_.clear();
+        uploaded_mesh_meta_.clear();
         gpu_meshes_.clear();
         render_pass_buckets_ = RenderPassBuckets{};
         render_pass_stats_ = RenderPassStats{};
@@ -191,13 +192,14 @@ void Controller::shutdown() {
         completed_queue_.clear();
         build_pending_set_.clear();
         upload_queue_.clear();
+        upload_pending_set_.clear();
 
         for (auto& [key, gpu] : gpu_meshes_) {
             (void)key;
             destroy_chunk_gpu_mesh(gpu);
         }
 
-        uploaded_meshes_.clear();
+        uploaded_mesh_meta_.clear();
         gpu_meshes_.clear();
         render_pass_buckets_ = RenderPassBuckets{};
         render_pass_stats_ = RenderPassStats{};
@@ -232,7 +234,7 @@ std::size_t Controller::queued_upload_count() const {
 
 std::size_t Controller::ready_mesh_count() const {
     std::scoped_lock lock(worker_mutex_);
-    return uploaded_meshes_.size();
+    return uploaded_mesh_meta_.size();
 }
 
 RenderPassBuckets Controller::render_pass_buckets() const {
@@ -327,7 +329,7 @@ void Controller::enqueue_dirty_chunks(world::World& world) {
         std::scoped_lock lock(worker_mutex_);
         for (const world::ChunkKey& key : keys) {
             world::Chunk* chunk = world.find_chunk(key);
-            if (chunk == nullptr || !chunk->dirty_mesh() || build_pending_set_.contains(key)) {
+            if (chunk == nullptr || !chunk->dirty_mesh() || build_pending_set_.contains(key) || upload_pending_set_.contains(key)) {
                 continue;
             }
 
@@ -364,7 +366,18 @@ void Controller::process_completed_builds() {
         std::scoped_lock lock(worker_mutex_);
         for (ChunkMeshInfo& mesh : staged_uploads) {
             build_pending_set_.erase(mesh.key);
-            upload_queue_.push_back(std::move(mesh));
+            const world::ChunkKey key = mesh.key;
+            if (upload_pending_set_.contains(key)) {
+                auto queued = std::find_if(upload_queue_.begin(), upload_queue_.end(), [&key](const ChunkMeshInfo& queued_mesh) {
+                    return queued_mesh.key == key;
+                });
+                if (queued != upload_queue_.end()) {
+                    *queued = std::move(mesh);
+                }
+            } else {
+                upload_pending_set_.insert(key);
+                upload_queue_.push_back(std::move(mesh));
+            }
         }
     }
 }
@@ -377,6 +390,7 @@ void Controller::process_upload_queue() {
     for (std::size_t index = 0; index < process_count; ++index) {
         ChunkMeshInfo mesh = std::move(upload_queue_.front());
         upload_queue_.pop_front();
+        upload_pending_set_.erase(mesh.key);
 
         ChunkGpuMesh& gpu = gpu_meshes_[mesh.key];
         destroy_chunk_gpu_mesh(gpu);
@@ -391,7 +405,11 @@ void Controller::process_upload_queue() {
             graphics::destroy_indexed_mesh(gpu.translucent);
         }
 
-        uploaded_meshes_[mesh.key] = std::move(mesh);
+        uploaded_mesh_meta_[mesh.key] = UploadedMeshMeta{
+            .opaque_face_count = mesh.opaque_face_count,
+            .cutout_face_count = mesh.cutout_face_count,
+            .translucent_face_count = mesh.translucent_face_count,
+        };
         any_uploads_committed = true;
     }
 
@@ -404,25 +422,25 @@ void Controller::rebuild_render_pass_buckets_locked() {
     render_pass_buckets_ = RenderPassBuckets{};
     render_pass_stats_ = RenderPassStats{};
 
-    render_pass_buckets_.opaque_chunks.reserve(uploaded_meshes_.size());
-    render_pass_buckets_.cutout_chunks.reserve(uploaded_meshes_.size());
-    render_pass_buckets_.translucent_chunks.reserve(uploaded_meshes_.size());
+    render_pass_buckets_.opaque_chunks.reserve(uploaded_mesh_meta_.size());
+    render_pass_buckets_.cutout_chunks.reserve(uploaded_mesh_meta_.size());
+    render_pass_buckets_.translucent_chunks.reserve(uploaded_mesh_meta_.size());
 
-    for (const auto& [key, mesh] : uploaded_meshes_) {
-        if (mesh.opaque_face_count > 0) {
+    for (const auto& [key, meta] : uploaded_mesh_meta_) {
+        if (meta.opaque_face_count > 0) {
             render_pass_buckets_.opaque_chunks.push_back(key);
             ++render_pass_stats_.opaque_chunk_count;
-            render_pass_stats_.opaque_face_count += mesh.opaque_face_count;
+            render_pass_stats_.opaque_face_count += meta.opaque_face_count;
         }
-        if (mesh.cutout_face_count > 0) {
+        if (meta.cutout_face_count > 0) {
             render_pass_buckets_.cutout_chunks.push_back(key);
             ++render_pass_stats_.cutout_chunk_count;
-            render_pass_stats_.cutout_face_count += mesh.cutout_face_count;
+            render_pass_stats_.cutout_face_count += meta.cutout_face_count;
         }
-        if (mesh.translucent_face_count > 0) {
+        if (meta.translucent_face_count > 0) {
             render_pass_buckets_.translucent_chunks.push_back(key);
             ++render_pass_stats_.translucent_chunk_count;
-            render_pass_stats_.translucent_face_count += mesh.translucent_face_count;
+            render_pass_stats_.translucent_face_count += meta.translucent_face_count;
         }
     }
 }
@@ -454,6 +472,9 @@ void Controller::stop_workers() {
         workers_stopping_ = true;
         build_queue_.clear();
         build_pending_set_.clear();
+        upload_queue_.clear();
+        upload_pending_set_.clear();
+        completed_queue_.clear();
     }
     worker_cv_.notify_all();
 
@@ -668,22 +689,30 @@ void Controller::prune_unloaded_chunks_locked(const world::World& world) {
     }
 
     std::vector<world::ChunkKey> remove_keys;
-    remove_keys.reserve(uploaded_meshes_.size());
+    remove_keys.reserve(uploaded_mesh_meta_.size());
 
-    for (const auto& [key, mesh] : uploaded_meshes_) {
-        (void)mesh;
+    for (const auto& [key, meta] : uploaded_mesh_meta_) {
+        (void)meta;
         if (!loaded_keys.contains(key)) {
             remove_keys.push_back(key);
         }
     }
 
     for (const world::ChunkKey& key : remove_keys) {
-        uploaded_meshes_.erase(key);
+        uploaded_mesh_meta_.erase(key);
         auto gpu_it = gpu_meshes_.find(key);
         if (gpu_it != gpu_meshes_.end()) {
             destroy_chunk_gpu_mesh(gpu_it->second);
             gpu_meshes_.erase(gpu_it);
         }
+
+        auto upload_it = std::find_if(upload_queue_.begin(), upload_queue_.end(), [&key](const ChunkMeshInfo& queued_mesh) {
+            return queued_mesh.key == key;
+        });
+        if (upload_it != upload_queue_.end()) {
+            upload_queue_.erase(upload_it);
+        }
+        upload_pending_set_.erase(key);
     }
 
     if (!remove_keys.empty()) {

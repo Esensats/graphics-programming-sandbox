@@ -67,6 +67,12 @@ struct RenderPassStats {
   std::uint64_t translucent_face_count = 0;
 };
 
+struct UploadedMeshMeta {
+  std::uint32_t opaque_face_count = 0;
+  std::uint32_t cutout_face_count = 0;
+  std::uint32_t translucent_face_count = 0;
+};
+
 struct FrustumPlane {
   float nx = 0.0f;
   float ny = 0.0f;
@@ -136,7 +142,8 @@ class Controller {
     std::unordered_set<world::ChunkKey, world::ChunkKeyHash> build_pending_set_{};
 
     std::deque<ChunkMeshInfo> upload_queue_{};
-    std::unordered_map<world::ChunkKey, ChunkMeshInfo, world::ChunkKeyHash> uploaded_meshes_{};
+    std::unordered_set<world::ChunkKey, world::ChunkKeyHash> upload_pending_set_{};
+    std::unordered_map<world::ChunkKey, UploadedMeshMeta, world::ChunkKeyHash> uploaded_mesh_meta_{};
     std::unordered_map<world::ChunkKey, ChunkGpuMesh, world::ChunkKeyHash> gpu_meshes_{};
     RenderPassBuckets render_pass_buckets_{};
     RenderPassStats render_pass_stats_{};
