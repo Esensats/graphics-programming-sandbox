@@ -21,7 +21,6 @@ void ResidencyController::initialize(const StreamingConfig& config) {
         generated_chunk_queue_.clear();
         workers_stopping_ = false;
     }
-    generated_chunk_queue_lock_free_.clear();
 
     unload_queue_.clear();
     unload_queued_set_.clear();
@@ -44,7 +43,6 @@ void ResidencyController::shutdown() {
         generation_pending_set_.clear();
         generated_chunk_queue_.clear();
     }
-    generated_chunk_queue_lock_free_.clear();
 
     unload_queue_.clear();
     unload_queued_set_.clear();
@@ -92,10 +90,6 @@ bool ResidencyController::initialized() const {
 
 std::size_t ResidencyController::queued_generation_count() const {
     std::scoped_lock lock(generation_mutex_);
-    if (config_.completed_queue_mode == concurrency::QueueMode::lock_free_mpsc) {
-        return generation_queue_.size() + generated_chunk_queue_lock_free_.size();
-    }
-
     return generation_queue_.size() + generated_chunk_queue_.size();
 }
 
@@ -160,16 +154,7 @@ void ResidencyController::process_generated_chunks(world::World& world) {
     std::vector<GeneratedChunk> pending_commits;
     pending_commits.reserve(config_.generation_budget_per_frame);
 
-    if (config_.completed_queue_mode == concurrency::QueueMode::lock_free_mpsc) {
-        for (std::size_t index = 0; index < config_.generation_budget_per_frame; ++index) {
-            GeneratedChunk generated{};
-            if (!generated_chunk_queue_lock_free_.try_pop(generated)) {
-                break;
-            }
-
-            pending_commits.push_back(std::move(generated));
-        }
-    } else {
+    {
         std::scoped_lock lock(generation_mutex_);
         const std::size_t process_count = std::min(config_.generation_budget_per_frame, generated_chunk_queue_.size());
         for (std::size_t index = 0; index < process_count; ++index) {
@@ -280,19 +265,11 @@ void ResidencyController::worker_main() {
         generator_.populate_chunk(key, generated.chunk);
 
         {
-            if (config_.completed_queue_mode == concurrency::QueueMode::lock_free_mpsc) {
-                std::scoped_lock lock(generation_mutex_);
-                if (workers_stopping_) {
-                    continue;
-                }
-                generated_chunk_queue_lock_free_.push(std::move(generated));
-            } else {
-                std::scoped_lock lock(generation_mutex_);
-                if (workers_stopping_) {
-                    continue;
-                }
-                generated_chunk_queue_.push_back(std::move(generated));
+            std::scoped_lock lock(generation_mutex_);
+            if (workers_stopping_) {
+                continue;
             }
+            generated_chunk_queue_.push_back(std::move(generated));
         }
     }
 }

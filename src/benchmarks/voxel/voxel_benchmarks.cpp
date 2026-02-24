@@ -13,7 +13,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "sandbox/logging.hpp"
-#include "sandbox/voxel/concurrency/queue_mode.hpp"
 #include "sandbox/voxel/meshing/controller.hpp"
 #include "sandbox/voxel/render/render_system.hpp"
 #include "sandbox/voxel/runtime.hpp"
@@ -125,7 +124,7 @@ BenchmarkRun benchmark_chunk_meshing() {
     });
 }
 
-BenchmarkRun benchmark_residency_controller(vxl::concurrency::QueueMode mode) {
+BenchmarkRun benchmark_residency_controller() {
     vxl::world::World world{};
     vxl::streaming::ResidencyController residency{};
 
@@ -136,14 +135,9 @@ BenchmarkRun benchmark_residency_controller(vxl::concurrency::QueueMode mode) {
         .unload_budget_per_frame = 24,
         .generation_workers = worker_count_for_bench(),
         .seed = 1337,
-        .completed_queue_mode = mode,
     });
 
-    const std::string name = mode == vxl::concurrency::QueueMode::lock_free_mpsc
-        ? "residency_controller/update(lock_free_mpsc)"
-        : "residency_controller/update(mutex_cv)";
-
-    BenchmarkRun result = run_benchmark(name, 1'000, [&]() {
+    BenchmarkRun result = run_benchmark("residency_controller/update", 1'000, [&]() {
         static int frame = 0;
         const vxl::world::WorldVoxelCoord focus{frame * 2, 0, frame};
         residency.set_focus_world(focus);
@@ -155,7 +149,7 @@ BenchmarkRun benchmark_residency_controller(vxl::concurrency::QueueMode mode) {
     return result;
 }
 
-BenchmarkRun benchmark_meshing_controller(vxl::concurrency::QueueMode mode) {
+BenchmarkRun benchmark_meshing_controller() {
     vxl::world::World world = seed_world_with_terrain(3, 1, 3, 9001);
     vxl::meshing::Controller controller{};
 
@@ -170,14 +164,9 @@ BenchmarkRun benchmark_meshing_controller(vxl::concurrency::QueueMode mode) {
         .workers = worker_count_for_bench(),
         .build_commit_budget_per_frame = 48,
         .upload_budget_per_frame = 0,
-        .completed_queue_mode = mode,
     });
 
-    const std::string name = mode == vxl::concurrency::QueueMode::lock_free_mpsc
-        ? "meshing_controller/update(lock_free_mpsc)"
-        : "meshing_controller/update(mutex_cv)";
-
-    BenchmarkRun result = run_benchmark(name, 900, [&]() {
+    BenchmarkRun result = run_benchmark("meshing_controller/update", 900, [&]() {
         controller.update(world);
     });
 
@@ -185,7 +174,7 @@ BenchmarkRun benchmark_meshing_controller(vxl::concurrency::QueueMode mode) {
     return result;
 }
 
-BenchmarkRun benchmark_end_to_end_pipeline(vxl::concurrency::QueueMode mode) {
+BenchmarkRun benchmark_end_to_end_pipeline() {
     vxl::Runtime runtime{};
     runtime.initialize(vxl::RuntimeConfig{
         .streaming = vxl::streaming::StreamingConfig{
@@ -195,13 +184,11 @@ BenchmarkRun benchmark_end_to_end_pipeline(vxl::concurrency::QueueMode mode) {
             .unload_budget_per_frame = 16,
             .generation_workers = worker_count_for_bench(),
             .seed = 1337,
-            .completed_queue_mode = mode,
         },
         .meshing = vxl::meshing::MeshingConfig{
             .workers = worker_count_for_bench(),
             .build_commit_budget_per_frame = 32,
             .upload_budget_per_frame = 32,
-            .completed_queue_mode = mode,
         },
     });
 
@@ -216,11 +203,7 @@ BenchmarkRun benchmark_end_to_end_pipeline(vxl::concurrency::QueueMode mode) {
         runtime.update_frame(1.0f / 60.0f);
     }
 
-    const std::string name = mode == vxl::concurrency::QueueMode::lock_free_mpsc
-        ? "end_to_end/frame(lock_free_mpsc)"
-        : "end_to_end/frame(mutex_cv)";
-
-    BenchmarkRun result = run_benchmark(name, 240, [&]() {
+    BenchmarkRun result = run_benchmark("end_to_end/frame", 240, [&]() {
         runtime.update_frame(1.0f / 60.0f);
 
         const auto draws = runtime.visible_draw_lists(vxl::meshing::VisibilityQuery{
@@ -263,25 +246,14 @@ int main() {
     }
 
     std::vector<sandbox::benchmarks::voxel::BenchmarkRun> runs;
-    runs.reserve(8);
+    runs.reserve(5);
 
     runs.push_back(sandbox::benchmarks::voxel::benchmark_terrain_generation());
     runs.push_back(sandbox::benchmarks::voxel::benchmark_chunk_meshing());
 
-    runs.push_back(sandbox::benchmarks::voxel::benchmark_residency_controller(
-        sandbox::voxel::concurrency::QueueMode::mutex_cv));
-    runs.push_back(sandbox::benchmarks::voxel::benchmark_residency_controller(
-        sandbox::voxel::concurrency::QueueMode::lock_free_mpsc));
-
-    runs.push_back(sandbox::benchmarks::voxel::benchmark_meshing_controller(
-        sandbox::voxel::concurrency::QueueMode::mutex_cv));
-    runs.push_back(sandbox::benchmarks::voxel::benchmark_meshing_controller(
-        sandbox::voxel::concurrency::QueueMode::lock_free_mpsc));
-
-    runs.push_back(sandbox::benchmarks::voxel::benchmark_end_to_end_pipeline(
-        sandbox::voxel::concurrency::QueueMode::mutex_cv));
-    runs.push_back(sandbox::benchmarks::voxel::benchmark_end_to_end_pipeline(
-        sandbox::voxel::concurrency::QueueMode::lock_free_mpsc));
+    runs.push_back(sandbox::benchmarks::voxel::benchmark_residency_controller());
+    runs.push_back(sandbox::benchmarks::voxel::benchmark_meshing_controller());
+    runs.push_back(sandbox::benchmarks::voxel::benchmark_end_to_end_pipeline());
 
     sandbox::benchmarks::voxel::print_results(runs);
 

@@ -12,8 +12,6 @@
 #include <vector>
 
 #include "sandbox/graphics/mesh_utils.hpp"
-#include "sandbox/voxel/concurrency/lock_free_mpsc_queue.hpp"
-#include "sandbox/voxel/concurrency/queue_mode.hpp"
 #include "sandbox/voxel/world/world.hpp"
 
 namespace sandbox::voxel::meshing {
@@ -22,7 +20,6 @@ struct MeshingConfig {
     std::size_t workers = 1;
     std::size_t build_commit_budget_per_frame = 16;
     std::size_t upload_budget_per_frame = 16;
-  concurrency::QueueMode completed_queue_mode = concurrency::QueueMode::mutex_cv;
 };
 
 struct ChunkMeshInfo {
@@ -143,7 +140,6 @@ class Controller {
 
     std::deque<BuildRequest> build_queue_{};
     std::deque<ChunkMeshInfo> completed_queue_{};
-    concurrency::LockFreeMpscQueue<ChunkMeshInfo> completed_queue_lock_free_{};
     std::unordered_set<world::ChunkKey, world::ChunkKeyHash> build_pending_set_{};
 
     std::deque<ChunkMeshInfo> upload_queue_{};
