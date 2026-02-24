@@ -1,5 +1,7 @@
 #include "sandbox/voxel/render/render_system.hpp"
 
+#include <algorithm>
+
 #include <glad/gl.h>
 #include <glm/gtc/type_ptr.hpp>
 
@@ -13,60 +15,74 @@ void RenderSystem::initialize(const char* resource_pack_directory) {
 
     material_pack_ = create_material_pack_from_directory(resource_pack_directory);
 
-    program_ = graphics::create_program_from_files("voxel_chunk.vert", "voxel_chunk.frag");
-    if (program_ == 0) {
-        LOG_ERROR("Failed to create voxel render program");
+    opaque_program_ = graphics::create_program_from_files("voxel_chunk_opaque.vert", "voxel_chunk_opaque.frag");
+    cutout_program_ = graphics::create_program_from_files("voxel_chunk_cutout.vert", "voxel_chunk_cutout.frag");
+    translucent_program_ = graphics::create_program_from_files("voxel_chunk_translucent.vert", "voxel_chunk_translucent.frag");
+
+    if (opaque_program_ == 0 || cutout_program_ == 0 || translucent_program_ == 0) {
+        LOG_ERROR("Failed to create voxel render programs");
+        shutdown();
         return;
     }
-
-    glUseProgram(program_);
-    const int albedo_loc = glGetUniformLocation(program_, "u_albedo_array");
-    glUniform1i(albedo_loc, 0);
 }
 
 void RenderSystem::shutdown() {
-    if (program_ != 0) {
-        glDeleteProgram(program_);
-        program_ = 0;
+    if (opaque_program_ != 0) {
+        glDeleteProgram(opaque_program_);
+        opaque_program_ = 0;
+    }
+
+    if (cutout_program_ != 0) {
+        glDeleteProgram(cutout_program_);
+        cutout_program_ = 0;
+    }
+
+    if (translucent_program_ != 0) {
+        glDeleteProgram(translucent_program_);
+        translucent_program_ = 0;
     }
 
     destroy_material_pack(material_pack_);
 }
 
 void RenderSystem::render_frame(const RenderFrameInput& input) const {
-    if (program_ == 0) {
+    if (opaque_program_ == 0 || cutout_program_ == 0 || translucent_program_ == 0) {
         return;
     }
+
+    if (material_pack_.albedo_array == 0) {
+        return;
+    }
+
+    std::vector<meshing::DrawCommand> opaque_commands = input.draw_lists.opaque;
+    std::vector<meshing::DrawCommand> translucent_commands = input.draw_lists.translucent;
+
+    sort_opaque_front_to_back(opaque_commands, input.camera_world);
+    sort_translucent_back_to_front(translucent_commands, input.camera_world);
 
     glEnable(GL_DEPTH_TEST);
     glViewport(0, 0, input.framebuffer_width, input.framebuffer_height);
     glClearColor(0.03f, 0.05f, 0.08f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    glUseProgram(program_);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D_ARRAY, material_pack_.albedo_array);
 
-    const int camera_loc = glGetUniformLocation(program_, "u_camera_world");
-    glUniform3f(camera_loc, input.camera_world.x, input.camera_world.y, input.camera_world.z);
-
-    const int fog_color_loc = glGetUniformLocation(program_, "u_fog_color");
-    glUniform3f(fog_color_loc, 0.03f, 0.05f, 0.08f);
-
-    const int fog_near_loc = glGetUniformLocation(program_, "u_fog_near");
-    const int fog_far_loc = glGetUniformLocation(program_, "u_fog_far");
-    glUniform1f(fog_near_loc, 140.0f);
-    glUniform1f(fog_far_loc, 700.0f);
-
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
-    draw_commands(program_, input.view_projection, input.draw_lists.opaque, 1.0f);
-    draw_commands(program_, input.view_projection, input.draw_lists.cutout, 1.0f);
+
+    apply_common_uniforms(opaque_program_, input, material_pack_.albedo_array);
+    draw_commands(opaque_program_, input.view_projection, opaque_commands, 1.0f);
+
+    apply_common_uniforms(cutout_program_, input, material_pack_.albedo_array);
+    draw_commands(cutout_program_, input.view_projection, input.draw_lists.cutout, 1.0f);
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDepthMask(GL_FALSE);
-    draw_commands(program_, input.view_projection, input.draw_lists.translucent, 1.0f);
+
+    apply_common_uniforms(translucent_program_, input, material_pack_.albedo_array);
+    draw_commands(translucent_program_, input.view_projection, translucent_commands, 1.0f);
 
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
@@ -74,7 +90,10 @@ void RenderSystem::render_frame(const RenderFrameInput& input) const {
 }
 
 bool RenderSystem::initialized() const {
-    return program_ != 0 && material_pack_.albedo_array != 0;
+    return opaque_program_ != 0
+        && cutout_program_ != 0
+        && translucent_program_ != 0
+        && material_pack_.albedo_array != 0;
 }
 
 RenderFrameStats RenderSystem::frame_stats(const meshing::VisibleDrawLists& draws) const {
@@ -104,6 +123,57 @@ void RenderSystem::draw_commands(unsigned int program,
     }
 
     glBindVertexArray(0);
+}
+
+void RenderSystem::apply_common_uniforms(unsigned int program,
+                                         const RenderFrameInput& input,
+                                         unsigned int albedo_array) {
+    glUseProgram(program);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, albedo_array);
+
+    const int albedo_loc = glGetUniformLocation(program, "u_albedo_array");
+    glUniform1i(albedo_loc, 0);
+
+    const int camera_loc = glGetUniformLocation(program, "u_camera_world");
+    glUniform3f(camera_loc, input.camera_world.x, input.camera_world.y, input.camera_world.z);
+
+    const int fog_color_loc = glGetUniformLocation(program, "u_fog_color");
+    glUniform3f(fog_color_loc, 0.03f, 0.05f, 0.08f);
+
+    const int fog_near_loc = glGetUniformLocation(program, "u_fog_near");
+    const int fog_far_loc = glGetUniformLocation(program, "u_fog_far");
+    glUniform1f(fog_near_loc, 140.0f);
+    glUniform1f(fog_far_loc, 700.0f);
+}
+
+void RenderSystem::sort_opaque_front_to_back(std::vector<meshing::DrawCommand>& commands,
+                                             const glm::vec3& camera_world) {
+    auto distance_sq = [&camera_world](const meshing::DrawCommand& command) {
+        const float dx = command.sort_center_x - camera_world.x;
+        const float dy = command.sort_center_y - camera_world.y;
+        const float dz = command.sort_center_z - camera_world.z;
+        return dx * dx + dy * dy + dz * dz;
+    };
+
+    std::sort(commands.begin(), commands.end(), [&distance_sq](const meshing::DrawCommand& lhs, const meshing::DrawCommand& rhs) {
+        return distance_sq(lhs) < distance_sq(rhs);
+    });
+}
+
+void RenderSystem::sort_translucent_back_to_front(std::vector<meshing::DrawCommand>& commands,
+                                                  const glm::vec3& camera_world) {
+    auto distance_sq = [&camera_world](const meshing::DrawCommand& command) {
+        const float dx = command.sort_center_x - camera_world.x;
+        const float dy = command.sort_center_y - camera_world.y;
+        const float dz = command.sort_center_z - camera_world.z;
+        return dx * dx + dy * dy + dz * dz;
+    };
+
+    std::sort(commands.begin(), commands.end(), [&distance_sq](const meshing::DrawCommand& lhs, const meshing::DrawCommand& rhs) {
+        return distance_sq(lhs) > distance_sq(rhs);
+    });
 }
 
 } // namespace sandbox::voxel::render

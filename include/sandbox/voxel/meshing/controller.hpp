@@ -44,6 +44,9 @@ struct ChunkMeshInfo {
 struct DrawCommand {
   unsigned int vao = 0;
   int index_count = 0;
+  float sort_center_x = 0.0f;
+  float sort_center_y = 0.0f;
+  float sort_center_z = 0.0f;
 };
 
 struct VisibleDrawLists {

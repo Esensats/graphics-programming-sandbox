@@ -34,6 +34,13 @@ constexpr std::array<graphics::VertexAttribute, 3> k_position_uv_layer_attribute
         return neighbor_block != current_block;
     }
 
+    if (current_traits.render_layer == world::RenderLayer::opaque
+        && neighbor_traits.render_layer == world::RenderLayer::translucent
+        && world::is_full_cube(current_traits.shape)
+        && world::is_full_cube(neighbor_traits.shape)) {
+        return false;
+    }
+
     return !(neighbor_traits.render_layer == world::RenderLayer::opaque
         && world::is_full_cube(neighbor_traits.shape));
 }
@@ -60,6 +67,16 @@ struct ChunkBounds {
         .max_x = min_x + chunk_extent,
         .max_y = min_y + chunk_extent,
         .max_z = min_z + chunk_extent,
+    };
+}
+
+[[nodiscard]] std::array<float, 3> chunk_center(const world::ChunkKey& key) {
+    const float chunk_extent = static_cast<float>(world::kChunkExtent);
+    const float half_extent = chunk_extent * 0.5f;
+    return {
+        static_cast<float>(key.x) * chunk_extent + half_extent,
+        static_cast<float>(key.y) * chunk_extent + half_extent,
+        static_cast<float>(key.z) * chunk_extent + half_extent,
     };
 }
 
@@ -300,7 +317,15 @@ VisibleDrawLists Controller::visible_draw_lists(const VisibilityQuery& query) co
                 continue;
             }
 
-            out.push_back(DrawCommand{.vao = handles.vao, .index_count = handles.index_count});
+            const auto center = chunk_center(key);
+
+            out.push_back(DrawCommand{
+                .vao = handles.vao,
+                .index_count = handles.index_count,
+                .sort_center_x = center[0],
+                .sort_center_y = center[1],
+                .sort_center_z = center[2],
+            });
         }
     };
 

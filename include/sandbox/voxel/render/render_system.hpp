@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <vector>
 
 #include <glm/glm.hpp>
 
@@ -38,12 +39,24 @@ class RenderSystem {
     [[nodiscard]] RenderFrameStats frame_stats(const meshing::VisibleDrawLists& draws) const;
 
   private:
+    static void apply_common_uniforms(unsigned int program,
+                                      const RenderFrameInput& input,
+                                      unsigned int albedo_array);
+
+    static void sort_opaque_front_to_back(std::vector<meshing::DrawCommand>& commands,
+                                          const glm::vec3& camera_world);
+
+    static void sort_translucent_back_to_front(std::vector<meshing::DrawCommand>& commands,
+                                               const glm::vec3& camera_world);
+
     static void draw_commands(unsigned int program,
                               const glm::mat4& view_projection,
                               const std::vector<meshing::DrawCommand>& commands,
                               float alpha);
 
-    unsigned int program_ = 0;
+    unsigned int opaque_program_ = 0;
+    unsigned int cutout_program_ = 0;
+    unsigned int translucent_program_ = 0;
     MaterialPack material_pack_{};
 };
 
