@@ -10,6 +10,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "sandbox/voxel/concurrency/lock_free_mpsc_queue.hpp"
+#include "sandbox/voxel/concurrency/queue_mode.hpp"
 #include "sandbox/voxel/streaming/terrain_generator.hpp"
 #include "sandbox/voxel/world/world.hpp"
 
@@ -20,8 +22,9 @@ struct StreamingConfig {
     int vertical_radius_chunks = 2;
     std::size_t generation_budget_per_frame = 8;
     std::size_t unload_budget_per_frame = 8;
-  std::size_t generation_workers = 1;
+    std::size_t generation_workers = 1;
     std::uint32_t seed = 1;
+    concurrency::QueueMode completed_queue_mode = concurrency::QueueMode::mutex_cv;
 };
 
 class ResidencyController {
@@ -67,6 +70,7 @@ class ResidencyController {
     std::deque<world::ChunkKey> generation_queue_{};
     std::unordered_set<world::ChunkKey, world::ChunkKeyHash> generation_pending_set_{};
     std::deque<GeneratedChunk> generated_chunk_queue_{};
+    concurrency::LockFreeMpscQueue<GeneratedChunk> generated_chunk_queue_lock_free_{};
     mutable std::mutex generation_mutex_{};
     std::condition_variable generation_cv_{};
     bool workers_stopping_ = false;

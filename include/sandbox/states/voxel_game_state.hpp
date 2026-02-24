@@ -3,7 +3,7 @@
 #include "sandbox/state.hpp"
 #include "sandbox/voxel/ui/game_overlay.hpp"
 #include "sandbox/voxel/camera/fly_camera.hpp"
-#include "sandbox/voxel/render/material_pack.hpp"
+#include "sandbox/voxel/render/render_system.hpp"
 #include "sandbox/voxel/runtime.hpp"
 
 namespace sandbox::states {
@@ -16,11 +16,10 @@ class VoxelGameState final : public State {
 
   private:
     voxel::Runtime runtime_{};
-    voxel::render::MaterialPack material_pack_{};
+    voxel::render::RenderSystem render_system_{};
     voxel::ui::GameOverlay overlay_{};
     voxel::camera::FlyCamera camera_{};
     voxel::camera::FlyCameraController camera_controller_{};
-    unsigned int program_ = 0;
 
     bool paused_ = false;
     bool show_debug_overlay_ = false;

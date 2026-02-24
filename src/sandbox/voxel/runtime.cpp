@@ -5,24 +5,31 @@
 namespace sandbox::voxel {
 
 void Runtime::initialize() {
+    initialize(RuntimeConfig{
+        .streaming = streaming::StreamingConfig{
+            .horizontal_radius_chunks = 2,
+            .vertical_radius_chunks = 1,
+            .generation_budget_per_frame = 12,
+            .unload_budget_per_frame = 12,
+            .generation_workers = 2,
+            .seed = 1337,
+        },
+        .meshing = meshing::MeshingConfig{
+            .workers = 2,
+            .build_commit_budget_per_frame = 24,
+            .upload_budget_per_frame = 24,
+        },
+    });
+}
+
+void Runtime::initialize(const RuntimeConfig& config) {
     if (initialized_) {
         return;
     }
 
     world_.clear();
-    residency_.initialize(streaming::StreamingConfig{
-        .horizontal_radius_chunks = 2,
-        .vertical_radius_chunks = 1,
-        .generation_budget_per_frame = 12,
-        .unload_budget_per_frame = 12,
-        .generation_workers = 2,
-        .seed = 1337,
-    });
-    meshing_.initialize(meshing::MeshingConfig{
-        .workers = 2,
-        .build_commit_budget_per_frame = 24,
-        .upload_budget_per_frame = 24,
-    });
+    residency_.initialize(config.streaming);
+    meshing_.initialize(config.meshing);
     residency_.set_focus_world(world::WorldVoxelCoord{0, 0, 0});
     residency_.update(world_);
     meshing_.update(world_);

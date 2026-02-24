@@ -5,10 +5,8 @@
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
-#include <glm/gtc/type_ptr.hpp>
 
 #include "sandbox/app_context.hpp"
-#include "sandbox/graphics/shader_utils.hpp"
 #include "sandbox/logging.hpp"
 
 namespace sandbox::states {
@@ -17,28 +15,6 @@ namespace {
 #ifndef SANDBOX_RESOURCE_PACK_DIR
 #define SANDBOX_RESOURCE_PACK_DIR "resource_packs"
 #endif
-
-void draw_commands(unsigned int program,
-                   const glm::mat4& view_projection,
-                   const std::vector<voxel::meshing::DrawCommand>& commands,
-                   float alpha) {
-    const int mvp_loc = glGetUniformLocation(program, "u_mvp");
-    const int alpha_loc = glGetUniformLocation(program, "u_alpha");
-    glUniform1f(alpha_loc, alpha);
-
-    for (const voxel::meshing::DrawCommand& command : commands) {
-        if (command.vao == 0 || command.index_count <= 0) {
-            continue;
-        }
-
-        const glm::mat4 mvp = view_projection;
-        glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, glm::value_ptr(mvp));
-        glBindVertexArray(command.vao);
-        glDrawElements(GL_TRIANGLES, command.index_count, GL_UNSIGNED_INT, nullptr);
-    }
-
-    glBindVertexArray(0);
-}
 
 bool consume_edge_press(bool key_pressed_now, bool& key_pressed_last_frame) {
     const bool edge_pressed = key_pressed_now && !key_pressed_last_frame;
@@ -51,16 +27,7 @@ bool consume_edge_press(bool key_pressed_now, bool& key_pressed_last_frame) {
 void VoxelGameState::on_enter(AppContext& context) {
     runtime_.initialize();
     overlay_.on_enter(context);
-    material_pack_ = voxel::render::create_material_pack_from_directory(SANDBOX_RESOURCE_PACK_DIR "/default");
-
-    program_ = graphics::create_program_from_files("voxel_chunk.vert", "voxel_chunk.frag");
-    if (program_ == 0) {
-        LOG_ERROR("Failed to create voxel program");
-    } else {
-        glUseProgram(program_);
-        const int albedo_loc = glGetUniformLocation(program_, "u_albedo_array");
-        glUniform1i(albedo_loc, 0);
-    }
+    render_system_.initialize(SANDBOX_RESOURCE_PACK_DIR "/default");
 
     accumulator_seconds_ = 0.0f;
     elapsed_seconds_ = 0.0f;
@@ -86,12 +53,8 @@ void VoxelGameState::on_enter(AppContext& context) {
 void VoxelGameState::on_exit(AppContext& context) {
     glfwSetInputMode(context.window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
-    if (program_ != 0) {
-        glDeleteProgram(program_);
-        program_ = 0;
-    }
+    render_system_.shutdown();
     overlay_.on_exit();
-    voxel::render::destroy_material_pack(material_pack_);
 
     runtime_.shutdown();
     accumulator_seconds_ = 0.0f;
@@ -159,11 +122,6 @@ StateTransition VoxelGameState::update(AppContext& context, float delta_seconds)
         }
     }
 
-    glEnable(GL_DEPTH_TEST);
-    glViewport(0, 0, context.framebuffer_width, context.framebuffer_height);
-    glClearColor(0.03f, 0.05f, 0.08f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
     const glm::vec3 eye = camera_.position();
     const glm::mat4 projection = camera_.projection_matrix(context.framebuffer_width, context.framebuffer_height);
     const glm::mat4 view = camera_.view_matrix();
@@ -181,35 +139,13 @@ StateTransition VoxelGameState::update(AppContext& context, float delta_seconds)
         + visible_draws.cutout.size()
         + visible_draws.translucent.size();
 
-    if (program_ != 0) {
-        glUseProgram(program_);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, material_pack_.albedo_array);
-        const int camera_loc = glGetUniformLocation(program_, "u_camera_world");
-        glUniform3f(camera_loc, eye.x, eye.y, eye.z);
-
-        const int fog_color_loc = glGetUniformLocation(program_, "u_fog_color");
-        glUniform3f(fog_color_loc, 0.03f, 0.05f, 0.08f);
-
-        const int fog_near_loc = glGetUniformLocation(program_, "u_fog_near");
-        const int fog_far_loc = glGetUniformLocation(program_, "u_fog_far");
-        glUniform1f(fog_near_loc, 140.0f);
-        glUniform1f(fog_far_loc, 700.0f);
-
-        glDepthMask(GL_TRUE);
-        glDisable(GL_BLEND);
-        draw_commands(program_, view_projection, visible_draws.opaque, 1.0f);
-        draw_commands(program_, view_projection, visible_draws.cutout, 1.0f);
-
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDepthMask(GL_FALSE);
-        draw_commands(program_, view_projection, visible_draws.translucent, 1.0f);
-
-        glDepthMask(GL_TRUE);
-        glDisable(GL_BLEND);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
-    }
+    render_system_.render_frame(voxel::render::RenderFrameInput{
+        .framebuffer_width = context.framebuffer_width,
+        .framebuffer_height = context.framebuffer_height,
+        .camera_world = eye,
+        .view_projection = view_projection,
+        .draw_lists = visible_draws,
+    });
 
     overlay_.begin_frame();
     if (show_debug_overlay_) {

@@ -8,6 +8,11 @@
 
 namespace sandbox::voxel {
 
+struct RuntimeConfig {
+  streaming::StreamingConfig streaming{};
+  meshing::MeshingConfig meshing{};
+};
+
 struct RuntimeDebugSnapshot {
     std::size_t active_chunk_count = 0;
     std::size_t generation_queued_count = 0;
@@ -17,6 +22,7 @@ struct RuntimeDebugSnapshot {
 class Runtime {
   public:
     void initialize();
+    void initialize(const RuntimeConfig& config);
     void shutdown();
 
     void update_fixed(float step_seconds);

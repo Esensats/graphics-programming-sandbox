@@ -12,6 +12,8 @@
 #include <vector>
 
 #include "sandbox/graphics/mesh_utils.hpp"
+#include "sandbox/voxel/concurrency/lock_free_mpsc_queue.hpp"
+#include "sandbox/voxel/concurrency/queue_mode.hpp"
 #include "sandbox/voxel/world/world.hpp"
 
 namespace sandbox::voxel::meshing {
@@ -20,6 +22,7 @@ struct MeshingConfig {
     std::size_t workers = 1;
     std::size_t build_commit_budget_per_frame = 16;
     std::size_t upload_budget_per_frame = 16;
+  concurrency::QueueMode completed_queue_mode = concurrency::QueueMode::mutex_cv;
 };
 
 struct ChunkMeshInfo {
@@ -90,6 +93,11 @@ struct VisibilityQuery {
 
 class Controller {
   public:
+    struct BuildRequest {
+        world::ChunkKey key{};
+        std::array<world::BlockId, world::kChunkVolume> blocks{};
+    };
+
     void initialize(const MeshingConfig& config);
     void shutdown();
 
@@ -104,12 +112,9 @@ class Controller {
     [[nodiscard]] RenderPassBuckets visible_render_pass_buckets(const VisibilityQuery& query) const;
     [[nodiscard]] VisibleDrawLists visible_draw_lists(const VisibilityQuery& query) const;
 
-  private:
-    struct BuildRequest {
-        world::ChunkKey key{};
-        std::array<world::BlockId, world::kChunkVolume> blocks{};
-    };
+    [[nodiscard]] static ChunkMeshInfo build_chunk_mesh(const BuildRequest& request);
 
+  private:
     void enqueue_dirty_chunks(world::World& world);
     void process_completed_builds();
     void process_upload_queue();
@@ -119,7 +124,6 @@ class Controller {
     void stop_workers();
     void worker_main();
 
-    [[nodiscard]] static ChunkMeshInfo build_chunk_mesh(const BuildRequest& request);
     [[nodiscard]] static bool is_chunk_visible(const world::ChunkKey& key, const VisibilityQuery& query);
 
     struct ChunkGpuMesh {
@@ -139,6 +143,7 @@ class Controller {
 
     std::deque<BuildRequest> build_queue_{};
     std::deque<ChunkMeshInfo> completed_queue_{};
+    concurrency::LockFreeMpscQueue<ChunkMeshInfo> completed_queue_lock_free_{};
     std::unordered_set<world::ChunkKey, world::ChunkKeyHash> build_pending_set_{};
 
     std::deque<ChunkMeshInfo> upload_queue_{};

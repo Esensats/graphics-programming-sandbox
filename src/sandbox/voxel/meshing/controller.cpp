@@ -163,6 +163,7 @@ void Controller::initialize(const MeshingConfig& config) {
         std::scoped_lock lock(worker_mutex_);
         build_queue_.clear();
         completed_queue_.clear();
+        completed_queue_lock_free_.clear();
         build_pending_set_.clear();
         upload_queue_.clear();
         upload_pending_set_.clear();
@@ -190,6 +191,7 @@ void Controller::shutdown() {
         std::scoped_lock lock(worker_mutex_);
         build_queue_.clear();
         completed_queue_.clear();
+        completed_queue_lock_free_.clear();
         build_pending_set_.clear();
         upload_queue_.clear();
         upload_pending_set_.clear();
@@ -224,6 +226,10 @@ bool Controller::initialized() const {
 
 std::size_t Controller::queued_build_count() const {
     std::scoped_lock lock(worker_mutex_);
+    if (config_.completed_queue_mode == concurrency::QueueMode::lock_free_mpsc) {
+        return build_queue_.size() + completed_queue_lock_free_.size();
+    }
+
     return build_queue_.size() + completed_queue_.size();
 }
 
@@ -349,7 +355,16 @@ void Controller::process_completed_builds() {
     std::vector<ChunkMeshInfo> staged_uploads;
     staged_uploads.reserve(config_.build_commit_budget_per_frame);
 
-    {
+    if (config_.completed_queue_mode == concurrency::QueueMode::lock_free_mpsc) {
+        for (std::size_t index = 0; index < config_.build_commit_budget_per_frame; ++index) {
+            ChunkMeshInfo mesh{};
+            if (!completed_queue_lock_free_.try_pop(mesh)) {
+                break;
+            }
+
+            staged_uploads.push_back(std::move(mesh));
+        }
+    } else {
         std::scoped_lock lock(worker_mutex_);
         const std::size_t process_count = std::min(config_.build_commit_budget_per_frame, completed_queue_.size());
         for (std::size_t index = 0; index < process_count; ++index) {
@@ -475,6 +490,7 @@ void Controller::stop_workers() {
         upload_queue_.clear();
         upload_pending_set_.clear();
         completed_queue_.clear();
+        completed_queue_lock_free_.clear();
     }
     worker_cv_.notify_all();
 
@@ -507,11 +523,19 @@ void Controller::worker_main() {
         ChunkMeshInfo mesh = build_chunk_mesh(request);
 
         {
-            std::scoped_lock lock(worker_mutex_);
-            if (workers_stopping_) {
-                continue;
+            if (config_.completed_queue_mode == concurrency::QueueMode::lock_free_mpsc) {
+                std::scoped_lock lock(worker_mutex_);
+                if (workers_stopping_) {
+                    continue;
+                }
+                completed_queue_lock_free_.push(std::move(mesh));
+            } else {
+                std::scoped_lock lock(worker_mutex_);
+                if (workers_stopping_) {
+                    continue;
+                }
+                completed_queue_.push_back(std::move(mesh));
             }
-            completed_queue_.push_back(std::move(mesh));
         }
     }
 }

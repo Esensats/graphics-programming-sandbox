@@ -66,6 +66,7 @@ add_executable(${PROJECT_NAME}
     src/sandbox/voxel/runtime.cpp
     src/sandbox/voxel/meshing/controller.cpp
     src/sandbox/voxel/render/material_pack.cpp
+    src/sandbox/voxel/render/render_system.cpp
     src/sandbox/voxel/streaming/residency.cpp
     src/sandbox/voxel/streaming/terrain_generator.cpp
     src/sandbox/voxel/world/world.cpp
@@ -99,4 +100,50 @@ endif()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_link_libraries(${PROJECT_NAME} PRIVATE stdc++exp)
+endif()
+
+add_executable(voxel_benchmarks
+    src/benchmarks/voxel/benchmark_support.cpp
+    src/benchmarks/voxel/voxel_benchmarks.cpp
+    src/sandbox/assets/image_loader.cpp
+    src/sandbox/logging.cpp
+    src/sandbox/graphics/mesh_utils.cpp
+    src/sandbox/graphics/shader_utils.cpp
+    src/sandbox/voxel/runtime.cpp
+    src/sandbox/voxel/meshing/controller.cpp
+    src/sandbox/voxel/render/material_pack.cpp
+    src/sandbox/voxel/render/render_system.cpp
+    src/sandbox/voxel/streaming/residency.cpp
+    src/sandbox/voxel/streaming/terrain_generator.cpp
+    src/sandbox/voxel/world/world.cpp
+)
+
+target_include_directories(voxel_benchmarks
+    PRIVATE
+        include
+        src
+    third_party/stb
+)
+
+target_compile_definitions(voxel_benchmarks
+    PRIVATE
+        SANDBOX_SHADER_DIR="${CMAKE_SOURCE_DIR}/shaders"
+        SANDBOX_RESOURCE_PACK_DIR="${CMAKE_SOURCE_DIR}/resource_packs"
+)
+
+target_link_libraries(voxel_benchmarks
+    PRIVATE
+        glad
+        glfw
+        glm::glm
+        spdlog::spdlog
+        OpenGL::GL
+)
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(voxel_benchmarks PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_libraries(voxel_benchmarks PRIVATE stdc++exp)
 endif()
