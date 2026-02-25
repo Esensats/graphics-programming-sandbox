@@ -17,6 +17,13 @@ constexpr std::array<graphics::VertexAttribute, 3> k_position_uv_layer_attribute
     {2, 1, 6, 5},
 }};
 
+constexpr int k_face_pos_x = 0;
+constexpr int k_face_neg_x = 1;
+constexpr int k_face_pos_y = 2;
+constexpr int k_face_neg_y = 3;
+constexpr int k_face_pos_z = 4;
+constexpr int k_face_neg_z = 5;
+
 [[nodiscard]] bool should_emit_face(
     world::BlockId current_block,
     world::BlockTraits current_traits,
@@ -31,14 +38,8 @@ constexpr std::array<graphics::VertexAttribute, 3> k_position_uv_layer_attribute
     }
 
     if (current_traits.render_layer == world::RenderLayer::translucent) {
-        return neighbor_block != current_block;
-    }
-
-    if (current_traits.render_layer == world::RenderLayer::opaque
-        && neighbor_traits.render_layer == world::RenderLayer::translucent
-        && world::is_full_cube(current_traits.shape)
-        && world::is_full_cube(neighbor_traits.shape)) {
-        return false;
+        return neighbor_traits.render_layer == world::RenderLayer::translucent
+            && neighbor_block != current_block;
     }
 
     return !(neighbor_traits.render_layer == world::RenderLayer::opaque
@@ -78,6 +79,130 @@ struct ChunkBounds {
         static_cast<float>(key.y) * chunk_extent + half_extent,
         static_cast<float>(key.z) * chunk_extent + half_extent,
     };
+}
+
+[[nodiscard]] world::ChunkKey neighbor_chunk_key(const world::ChunkKey& key, int face_index) {
+    switch (face_index) {
+        case k_face_pos_x:
+            return world::ChunkKey{key.x + 1, key.y, key.z};
+        case k_face_neg_x:
+            return world::ChunkKey{key.x - 1, key.y, key.z};
+        case k_face_pos_y:
+            return world::ChunkKey{key.x, key.y + 1, key.z};
+        case k_face_neg_y:
+            return world::ChunkKey{key.x, key.y - 1, key.z};
+        case k_face_pos_z:
+            return world::ChunkKey{key.x, key.y, key.z + 1};
+        case k_face_neg_z:
+            return world::ChunkKey{key.x, key.y, key.z - 1};
+        default:
+            return key;
+    }
+}
+
+[[nodiscard]] std::size_t face_slice_index(int u, int v) {
+    return static_cast<std::size_t>(u)
+        + static_cast<std::size_t>(v) * static_cast<std::size_t>(world::kChunkExtent);
+}
+
+/**
+ * Fills the neighbor face block ID slice for the given face index from the provided neighbor chunk.
+ * Marks the neighbor face as present in the build request.
+ */
+void fill_neighbor_face_slice(Controller::BuildRequest& request,
+                              int face_index,
+                              const world::Chunk& neighbor_chunk) {
+    const auto& blocks = neighbor_chunk.blocks();
+    auto& face_blocks = request.neighbor_face_blocks[static_cast<std::size_t>(face_index)];
+
+    for (int v = 0; v < world::kChunkExtent; ++v) {
+        for (int u = 0; u < world::kChunkExtent; ++u) {
+            world::LocalVoxelCoord neighbor_coord{};
+            switch (face_index) {
+                case k_face_pos_x:
+                    neighbor_coord = world::LocalVoxelCoord{0, u, v};
+                    break;
+                case k_face_neg_x:
+                    neighbor_coord = world::LocalVoxelCoord{world::kChunkExtent - 1, u, v};
+                    break;
+                case k_face_pos_y:
+                    neighbor_coord = world::LocalVoxelCoord{u, 0, v};
+                    break;
+                case k_face_neg_y:
+                    neighbor_coord = world::LocalVoxelCoord{u, world::kChunkExtent - 1, v};
+                    break;
+                case k_face_pos_z:
+                    neighbor_coord = world::LocalVoxelCoord{u, v, 0};
+                    break;
+                case k_face_neg_z:
+                    neighbor_coord = world::LocalVoxelCoord{u, v, world::kChunkExtent - 1};
+                    break;
+                default:
+                    neighbor_coord = world::LocalVoxelCoord{0, 0, 0};
+                    break;
+            }
+
+            const std::size_t src_index = world::flatten_local_coord(neighbor_coord);
+            face_blocks[face_slice_index(u, v)] = blocks[src_index];
+        }
+    }
+
+    request.neighbor_face_present[static_cast<std::size_t>(face_index)] = true;
+}
+
+[[nodiscard]] world::BlockId sample_block_with_neighbor_faces(const Controller::BuildRequest& request,
+                                                              int x,
+                                                              int y,
+                                                              int z) {
+    if (x >= 0 && x < world::kChunkExtent
+        && y >= 0 && y < world::kChunkExtent
+        && z >= 0 && z < world::kChunkExtent) {
+        return request.blocks[world::flatten_local_coord(world::LocalVoxelCoord{x, y, z})];
+    }
+
+    if (x == world::kChunkExtent) {
+        if (!request.neighbor_face_present[static_cast<std::size_t>(k_face_pos_x)]) {
+            return world::kAirBlockId;
+        }
+        return request.neighbor_face_blocks[static_cast<std::size_t>(k_face_pos_x)][face_slice_index(y, z)];
+    }
+
+    if (x == -1) {
+        if (!request.neighbor_face_present[static_cast<std::size_t>(k_face_neg_x)]) {
+            return world::kAirBlockId;
+        }
+        return request.neighbor_face_blocks[static_cast<std::size_t>(k_face_neg_x)][face_slice_index(y, z)];
+    }
+
+    if (y == world::kChunkExtent) {
+        if (!request.neighbor_face_present[static_cast<std::size_t>(k_face_pos_y)]) {
+            return world::kAirBlockId;
+        }
+        return request.neighbor_face_blocks[static_cast<std::size_t>(k_face_pos_y)][face_slice_index(x, z)];
+    }
+
+    if (y == -1) {
+        if (!request.neighbor_face_present[static_cast<std::size_t>(k_face_neg_y)]) {
+            return world::kAirBlockId;
+        }
+        return request.neighbor_face_blocks[static_cast<std::size_t>(k_face_neg_y)][face_slice_index(x, z)];
+    }
+
+    if (z == world::kChunkExtent) {
+        if (!request.neighbor_face_present[static_cast<std::size_t>(k_face_pos_z)]) {
+            return world::kAirBlockId;
+        }
+        return request.neighbor_face_blocks[static_cast<std::size_t>(k_face_pos_z)][face_slice_index(x, y)];
+    }
+
+    if (z == -1) {
+        if (!request.neighbor_face_present[static_cast<std::size_t>(k_face_neg_z)]) {
+            return world::kAirBlockId;
+        }
+        return request.neighbor_face_blocks[static_cast<std::size_t>(k_face_neg_z)][face_slice_index(x, y)];
+    }
+
+    return world::kAirBlockId;
 }
 
 void append_face(ChunkMeshInfo::SurfaceMesh& surface,
@@ -350,6 +475,23 @@ void Controller::enqueue_dirty_chunks(world::World& world) {
 
     const auto keys = world.chunk_keys();
 
+    for (const world::ChunkKey& key : keys) {
+        world::Chunk* chunk = world.find_chunk(key);
+        if (chunk == nullptr || !chunk->dirty_mesh()) {
+            continue;
+        }
+
+        for (int face = 0; face < 6; ++face) {
+            const world::ChunkKey neighbor_key = neighbor_chunk_key(key, face);
+            world::Chunk* neighbor_chunk = world.find_chunk(neighbor_key);
+            if (neighbor_chunk == nullptr) {
+                continue;
+            }
+
+            neighbor_chunk->mark_dirty_mesh();
+        }
+    }
+
     {
         std::scoped_lock lock(worker_mutex_);
         for (const world::ChunkKey& key : keys) {
@@ -361,6 +503,17 @@ void Controller::enqueue_dirty_chunks(world::World& world) {
             BuildRequest request{};
             request.key = key;
             request.blocks = chunk->blocks();
+
+            for (int face = 0; face < 6; ++face) {
+                const world::ChunkKey neighbor_key = neighbor_chunk_key(key, face);
+                const world::Chunk* neighbor_chunk = world.find_chunk(neighbor_key);
+                if (neighbor_chunk == nullptr) {
+                    continue;
+                }
+
+                fill_neighbor_face_slice(request, face, *neighbor_chunk);
+            }
+
             build_queue_.push_back(std::move(request));
             build_pending_set_.insert(key);
             chunk->clear_dirty_mesh();
@@ -543,8 +696,7 @@ void Controller::worker_main() {
 
 ChunkMeshInfo Controller::build_chunk_mesh(const BuildRequest& request) {
     auto block_at = [&request](int x, int y, int z) -> world::BlockId {
-        const world::LocalVoxelCoord coord{x, y, z};
-        return request.blocks[world::flatten_local_coord(coord)];
+        return sample_block_with_neighbor_faces(request, x, y, z);
     };
 
     ChunkMeshInfo mesh_info{};
@@ -590,44 +742,26 @@ ChunkMeshInfo Controller::build_chunk_mesh(const BuildRequest& request) {
 
                 const bool face_visible[6] = {
                     [&]() {
-                        if (x == world::kChunkExtent - 1) {
-                            return true;
-                        }
                         const auto [neighbor_id, neighbor] = neighbor_traits(x + 1, y, z);
                         return should_emit_face(block_id, traits, neighbor_id, neighbor);
                     }(),
                     [&]() {
-                        if (x == 0) {
-                            return true;
-                        }
                         const auto [neighbor_id, neighbor] = neighbor_traits(x - 1, y, z);
                         return should_emit_face(block_id, traits, neighbor_id, neighbor);
                     }(),
                     [&]() {
-                        if (y == world::kChunkExtent - 1) {
-                            return true;
-                        }
                         const auto [neighbor_id, neighbor] = neighbor_traits(x, y + 1, z);
                         return should_emit_face(block_id, traits, neighbor_id, neighbor);
                     }(),
                     [&]() {
-                        if (y == 0) {
-                            return true;
-                        }
                         const auto [neighbor_id, neighbor] = neighbor_traits(x, y - 1, z);
                         return should_emit_face(block_id, traits, neighbor_id, neighbor);
                     }(),
                     [&]() {
-                        if (z == world::kChunkExtent - 1) {
-                            return true;
-                        }
                         const auto [neighbor_id, neighbor] = neighbor_traits(x, y, z + 1);
                         return should_emit_face(block_id, traits, neighbor_id, neighbor);
                     }(),
                     [&]() {
-                        if (z == 0) {
-                            return true;
-                        }
                         const auto [neighbor_id, neighbor] = neighbor_traits(x, y, z - 1);
                         return should_emit_face(block_id, traits, neighbor_id, neighbor);
                     }(),

@@ -61,6 +61,9 @@ void RenderSystem::render_frame(const RenderFrameInput& input) const {
     sort_translucent_back_to_front(translucent_commands, input.camera_world);
 
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    glFrontFace(GL_CCW);
     glViewport(0, 0, input.framebuffer_width, input.framebuffer_height);
     glClearColor(0.03f, 0.05f, 0.08f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -86,6 +89,7 @@ void RenderSystem::render_frame(const RenderFrameInput& input) const {
 
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
+    glDisable(GL_CULL_FACE);
     glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 }
 

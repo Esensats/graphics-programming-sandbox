@@ -96,6 +96,8 @@ class Controller {
     struct BuildRequest {
         world::ChunkKey key{};
         std::array<world::BlockId, world::kChunkVolume> blocks{};
+        std::array<bool, 6> neighbor_face_present{};
+        std::array<std::array<world::BlockId, world::kChunkArea>, 6> neighbor_face_blocks{};
     };
 
     void initialize(const MeshingConfig& config);
