@@ -9,16 +9,12 @@
 
 #include "sandbox/app_context.hpp"
 #include "sandbox/logging.hpp"
+#include "sandbox/states/state_imgui_utils.hpp"
 
 namespace sandbox::states {
 
 void SelectorMenuState::on_enter(AppContext& context) {
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui::StyleColorsDark();
-
-    ImGui_ImplGlfw_InitForOpenGL(context.window, true);
-    ImGui_ImplOpenGL3_Init("#version 460");
+    imgui_utils::initialize_for_context(context);
     initialized_ = true;
 
     LOG_INFO("Entered selector menu state");
@@ -30,9 +26,7 @@ void SelectorMenuState::on_exit(AppContext& context) {
         return;
     }
 
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
+    imgui_utils::shutdown();
     initialized_ = false;
 
     LOG_INFO("Exited selector menu state");
@@ -41,14 +35,9 @@ void SelectorMenuState::on_exit(AppContext& context) {
 StateTransition SelectorMenuState::update(AppContext& context, float delta_seconds) {
     (void)delta_seconds;
 
-    glDisable(GL_DEPTH_TEST);
-    glViewport(0, 0, context.framebuffer_width, context.framebuffer_height);
-    glClearColor(0.08f, 0.08f, 0.12f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
+    imgui_utils::clear_framebuffer(0.08f, 0.08f, 0.12f, context);
 
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplGlfw_NewFrame();
-    ImGui::NewFrame();
+    imgui_utils::begin_frame();
 
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
@@ -79,8 +68,7 @@ StateTransition SelectorMenuState::update(AppContext& context, float delta_secon
     }
     ImGui::End();
 
-    ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    imgui_utils::end_frame();
     return transition;
 }
 
