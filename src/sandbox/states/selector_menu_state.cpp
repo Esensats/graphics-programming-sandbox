@@ -36,7 +36,6 @@ StateTransition SelectorMenuState::update(AppContext& context, float delta_secon
     (void)delta_seconds;
 
     imgui_utils::clear_framebuffer(0.08f, 0.08f, 0.12f, context);
-
     imgui_utils::begin_frame();
 
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -49,14 +48,10 @@ StateTransition SelectorMenuState::update(AppContext& context, float delta_secon
         ImGui::TextUnformatted("Choose a state to launch:");
         ImGui::Spacing();
 
-        if (ImGui::Button("Fragment Shader Playground", ImVec2(-1.0f, 0.0f))) {
-            transition = StateTransition::to(AppStateId::fragment_playground);
-        }
-        if (ImGui::Button("Hello Cube", ImVec2(-1.0f, 0.0f))) {
-            transition = StateTransition::to(AppStateId::hello_cube);
-        }
-        if (ImGui::Button("Voxel Game (Scaffold)", ImVec2(-1.0f, 0.0f))) {
-            transition = StateTransition::to(AppStateId::voxel_game);
+        for (const auto& entry : context.state_registry.entries()) {
+            if (ImGui::Button(entry.display_name.c_str(), ImVec2(-1.0f, 0.0f))) {
+                transition = StateTransition::to_factory(entry.factory);
+            }
         }
 
         ImGui::Spacing();

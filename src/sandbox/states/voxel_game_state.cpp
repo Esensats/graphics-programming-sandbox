@@ -8,6 +8,7 @@
 
 #include "sandbox/app_context.hpp"
 #include "sandbox/logging.hpp"
+#include "sandbox/states/selector_menu_state.hpp"
 
 namespace sandbox::states {
 namespace {
@@ -173,7 +174,7 @@ StateTransition VoxelGameState::update(AppContext& context, float delta_seconds)
         paused_ = false;
     }
     if (pause_result.exit_to_selector_requested) {
-        return StateTransition::to(AppStateId::selector_menu);
+        return StateTransition::to<SelectorMenuState>();
     }
 
     return StateTransition::none();

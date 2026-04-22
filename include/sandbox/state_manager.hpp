@@ -12,16 +12,19 @@ class StateManager {
   public:
     StateManager() = default;
 
-    void initialize(AppContext& context, AppStateId initial_state);
+    template<std::derived_from<State> InitialState>
+    void initialize(AppContext& context) {
+        initialize_impl(context, [] { return std::make_unique<InitialState>(); });
+    }
+
     void shutdown(AppContext& context);
     bool update(AppContext& context, float delta_seconds);
 
   private:
-    void switch_to(AppContext& context, AppStateId next_state);
-    std::unique_ptr<State> make_state(AppStateId state_id);
+    void initialize_impl(AppContext& context, std::function<std::unique_ptr<State>()> factory);
+    void switch_to(AppContext& context, std::function<std::unique_ptr<State>()> factory);
 
     std::unique_ptr<State> active_state_;
-    AppStateId active_state_id_ = AppStateId::selector_menu;
     bool initialized_ = false;
 };
 

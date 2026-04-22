@@ -51,7 +51,7 @@ graph TD
     G --> H[ActiveState::update]
     H --> I{Returns Transition?}
     I -- none() --> E
-    I -- to(new_state) --> J[ActiveState::on_exit]
+    I -- to&lt;NewState&gt;() --> J[ActiveState::on_exit]
     J --> K[NewState::on_enter]
     K --> E
     I -- quit() --> L[Cleanup & Exit]
@@ -78,18 +78,7 @@ public:
 }
 ```
 
-**2. Add the State to `AppStateId`**:
-Edit `include/sandbox/state.hpp` and add your state to the enum.
-
-```cpp
-enum class AppStateId {
-    selector_menu,
-    // ...
-    my_cool_shader // Add yours here!
-};
-```
-
-**3. Implement the State Logic**:
+**2. Implement the State Logic**:
 In your `.cpp` file, implement the setup, main loop, and teardown logic. The sandbox manages the window frame cycle; you just draw to it!
 
 ```mermaid
@@ -98,24 +87,38 @@ sequenceDiagram
     participant StateManager as State Manager
     participant State as MyCoolShaderState
 
-    MainLoop->>StateManager: switch_to(my_cool_shader)
+    MainLoop->>StateManager: initialize<MyCoolShaderState>()
     StateManager->>State: on_enter(context)
     Note over State: Compile shaders, generate VAOs/VBOs,<br/>and load textures here.
-    
+
     loop Every Frame
         MainLoop->>StateManager: update(...)
         StateManager->>State: update(context, delta_seconds)
         Note over State: Run simulation logic, render frame,<br/>and draw ImGui windows.
         State-->>StateManager: return StateTransition::none()
     end
-    
+
     MainLoop->>StateManager: shutdown()
     StateManager->>State: on_exit(context)
     Note over State: Clean up your OpenGL<br/>resources and buffers here.
 ```
 
-**4. Register and Run**:
-In `src/sandbox/state_manager.cpp`, register your new state in the `make_state` factory method. When the state completes its goal or the user wants to leave (handled by default via `Shift+Esc` going back to the selector), return `StateTransition::to(AppStateId::selector_menu)` or let the app context gracefully handle the shortcut.
+**3. Register and Run**:
+Add your `.cpp` to `CMakeLists.txt`, then register in `src/main.cpp`:
+
+```cpp
+app_context.state_registry.register_state<MyCoolShaderState>("My Cool Shader");
+```
+
+This makes it appear as a button in the selector menu. To transition to it programmatically from another state, return `StateTransition::to<MyCoolShaderState>()` from `update()`. `Shift+Esc` from any state returns to the selector menu.
+
+## FAQ
+
+**Q: I added my new `my_state.cpp` file but getting undefined reference or linker errors. What did I miss?**
+**A:** You need to tell CMake to compile your new C++ file. Open `CMakeLists.txt` and add `src/sandbox/states/my_state.cpp` to the `add_executable(opengl_sandbox ...)` source list. After that, re-run your build command.
+
+**Q: My shaders aren't loading, getting "Failed to open file".**
+**A:** Ensure you are using the `graphics::create_program_from_files(...)` standard sandbox utility instead of hardcoded paths. The project automatically knows to look in the `shaders/` directory based on the `SANDBOX_SHADER_DIR` definition configured by CMake.
 
 ## Requirements
 
