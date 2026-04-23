@@ -17,3 +17,6 @@ compile_commands.json
 
 # Cache
 .cache/
+
+# ImGui artifacts
+imgui.ini

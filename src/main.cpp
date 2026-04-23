@@ -39,7 +39,7 @@ int main() {
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "[floating] OpenGL Sandbox", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(1280, 720, "Gloxide", nullptr, nullptr);
     if (window == nullptr) {
         LOG_CRITICAL("Failed to create GLFW window");
         glfwTerminate();

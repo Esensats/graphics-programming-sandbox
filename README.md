@@ -1,4 +1,4 @@
-# OpenGL Sandbox
+# Gloxide | A C++23 Graphics State Sandbox
 
 ![Voxel Game State](./screenshots/voxel_game_state.png)
 
@@ -17,7 +17,7 @@ Every time you want to build a new graphics experiment, you often have to rewrit
 
 Many solutions exist to circumvent this: web-based environments like Shadertoy are excellent but restrict you to fragment shaders and hide the host-side C++ architecture. Full-scale game engines like Unity or Unreal are incredibly powerful but abstract the underlying graphics API away entirely, defeating the purpose of learning the low-level mechanics.
 
-**OpenGL Sandbox** bridges this gap. It is a lightweight, pre-configured C++23 framework that takes care of the boilerplate (GLFW, GLAD, ImGui, and core utilities) so you can focus on the fun parts. Using a simple [State pattern](https://refactoring.guru/design-patterns/state), you can seamlessly create isolated graphical experiments—ranging from simple 2D fragment shader playgrounds to complex multi-chunk 3D voxel engines—all within the same project. 
+**Gloxide** bridges this gap. It is a lightweight, pre-configured C++23 framework that takes care of the boilerplate (GLFW, GLAD, ImGui, and core utilities) so you can focus on the fun parts. Using a simple [State pattern](https://refactoring.guru/design-patterns/state), you can seamlessly create isolated graphical experiments—ranging from simple 2D fragment shader playgrounds to complex multi-chunk 3D voxel engines—all within the same project. 
 
 It's simple to get started:
 
@@ -34,7 +34,7 @@ Some ideas for states you could implement:
 
 ## Architecture & Quickstart
 
-**OpenGL Sandbox** is built around a simple State Machine pattern. This keeps each experiment completely isolated from the others while sharing the same window and OpenGL context.
+**Gloxide** is built around a simple State Machine pattern. This keeps each experiment completely isolated from the others while sharing the same window and OpenGL context.
 
 ### The Game Loop
 
@@ -115,7 +115,7 @@ This makes it appear as a button in the selector menu. To transition to it progr
 ## FAQ
 
 **Q: I added my new `my_state.cpp` file but getting undefined reference or linker errors. What did I miss?**
-**A:** You need to tell CMake to compile your new C++ file. Open `CMakeLists.txt` and add `src/sandbox/states/my_state.cpp` to the `add_executable(opengl_sandbox ...)` source list. After that, re-run your build command.
+**A:** You need to tell CMake to compile your new C++ file. Open `CMakeLists.txt` and add `src/sandbox/states/my_state.cpp` to the `add_executable(gloxide ...)` source list. After that, re-run your build command.
 
 **Q: My shaders aren't loading, getting "Failed to open file".**
 **A:** Ensure you are using the `graphics::create_program_from_files(...)` standard sandbox utility instead of hardcoded paths. The project automatically knows to look in the `shaders/` directory based on the `SANDBOX_SHADER_DIR` definition configured by CMake.
@@ -152,7 +152,7 @@ cmake --build build -j
 ## Run
 
 ```bash
-./build/opengl_sandbox
+./build/gloxide
 ```
 
 ## Screenshots
