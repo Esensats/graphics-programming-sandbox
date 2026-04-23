@@ -1,6 +1,6 @@
 # Gloxide | A C++23 Graphics State Sandbox
 
-![Voxel Game State](./screenshots/voxel_game_state.png)
+https://github.com/user-attachments/assets/851d2e71-ef46-4a67-9142-5003cdfd85be
 
 Starter C++23 OpenGL 4.6 project using GLFW + GLAD with CMake. Includes a simple state management system for easily creating and switching between different graphical experiments. The project is designed to be a sandbox for learning and prototyping graphics programming concepts without the overhead of setting up the boilerplate code every time. Screenshots at [the bottom](#screenshots) show some example states that have been implemented, including a fragment shader playground and a full fledged multithreaded voxel engine.
 
@@ -158,6 +158,7 @@ cmake --build build -j
 ## Screenshots
 
 ![State selector menu state](./screenshots/state_selector_menu.png)
+![Voxel Game State](./screenshots/voxel_game_state.png)
 ![Fragment shader playground state](./screenshots/fragment_shader_playground_state.png)
 ![Hello cube state](./screenshots/hello_cube_state.png)
 
